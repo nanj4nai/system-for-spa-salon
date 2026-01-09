@@ -173,9 +173,32 @@ $username     = $_SESSION['username'] ?? 'Cashier';
 
                 <!-- Totals -->
                 <div class="space-y-1">
+
+                    <div class="flex justify-between text-xs">
+                        <span>Services</span>
+                        <span id="servicesTotal">₱0.00</span>
+                    </div>
+
+                    <div class="flex justify-between text-xs">
+                        <span>Consumables</span>
+                        <span id="consumablesTotal">₱0.00</span>
+                    </div>
+
+                    <div class="flex justify-between text-xs">
+                        <span>Extra Products</span>
+                        <span id="extraProductsTotal">₱0.00</span>
+                    </div>
+
+                    <hr class="border-gray-200 dark:border-gray-700">
+
                     <div class="flex justify-between">
                         <span>Subtotal</span>
                         <span id="subtotalAmount">₱0.00</span>
+                    </div>
+
+                    <div class="flex justify-between text-xs">
+                        <span>VAT (<span id="vatRateLabel">0</span>%)</span>
+                        <span id="vatAmount">₱0.00</span>
                     </div>
 
                     <div class="flex justify-between font-semibold text-lg">
@@ -380,6 +403,33 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                        bg-emerald-600 hover:bg-emerald-700
                        text-white font-medium">
                     Confirm & Proceed
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- REMOVE SERVICE MODAL -->
+    <div id="removeServiceModal"
+        class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm">
+
+            <h3 class="text-lg font-semibold mb-2">
+                Remove Service
+            </h3>
+
+            <p class="text-sm text-gray-500 mb-4">
+                This service and its product usage will be removed from the transaction.
+            </p>
+
+            <div class="flex justify-end gap-2">
+                <button id="cancelRemoveServiceBtn"
+                    class="px-4 py-2 text-sm rounded bg-gray-200 dark:bg-gray-600">
+                    Cancel
+                </button>
+
+                <button id="confirmRemoveServiceBtn"
+                    class="px-4 py-2 text-sm rounded bg-red-600 text-white">
+                    Remove
                 </button>
             </div>
         </div>

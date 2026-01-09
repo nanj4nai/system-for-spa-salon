@@ -252,7 +252,9 @@ function renderPaymentBreakdown(data) {
     serviceBox.innerHTML = "";
     productBox.innerHTML = "";
 
-    // SERVICES (with product usage)
+    // ======================
+    // SERVICES
+    // ======================
     if (data.services?.length) {
         data.services.forEach(s => {
             serviceBox.innerHTML += `
@@ -280,7 +282,9 @@ function renderPaymentBreakdown(data) {
             `<div class="text-xs italic text-gray-400">No services</div>`;
     }
 
-    // EXTRA PRODUCTS (unchanged)
+    // ======================
+    // EXTRA PRODUCTS
+    // ======================
     if (data.products?.length) {
         data.products.forEach(p => {
             productBox.innerHTML += `
@@ -295,14 +299,30 @@ function renderPaymentBreakdown(data) {
             `<div class="text-xs italic text-gray-400">No extra products</div>`;
     }
 
+    // ======================
     // TOTALS
+    // ======================
+    document.getElementById("servicesTotal").textContent =
+        `₱${Number(data.totals.services_total).toFixed(2)}`;
+
+    document.getElementById("consumablesTotal").textContent =
+        `₱${Number(data.totals.consumables_total).toFixed(2)}`;
+
+    document.getElementById("extraProductsTotal").textContent =
+        `₱${Number(data.totals.extra_products_total).toFixed(2)}`;
+
     document.getElementById("subtotalAmount").textContent =
         `₱${Number(data.totals.subtotal).toFixed(2)}`;
+
+    document.getElementById("vatRateLabel").textContent =
+        Number(data.totals.vat_rate).toFixed(2);
+
+    document.getElementById("vatAmount").textContent =
+        `₱${Number(data.totals.vat_amount).toFixed(2)}`;
 
     document.getElementById("transactionTotal").textContent =
         `₱${Number(data.totals.grand_total).toFixed(2)}`;
 }
-
 
 function populateLockSummary(data) {
     document.getElementById("lockClientName").textContent =

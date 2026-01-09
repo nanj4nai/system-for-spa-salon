@@ -7,7 +7,7 @@ const cancelServiceBtn = document.getElementById("cancelServiceBtn");
 const staffSelect = document.getElementById("staffSelect");
 const variantSelect = document.getElementById("variantSelect");
 let editingAppointmentServiceId = null;
-
+let pendingRemoveAppointmentServiceId = null;
 
 function hasDuplicateService(serviceId, variantId, excludeAppointmentServiceId = null) {
     const cards = document.querySelectorAll(".service-card");
@@ -39,7 +39,17 @@ function hasDuplicateService(serviceId, variantId, excludeAppointmentServiceId =
 }
 
 addServiceBtn.addEventListener('click', () => {
-    editingAppointmentServiceId = null; // 🔥 IMPORTANT
+
+    // 🛑 GUARD: do not reset while editing
+    if (editingAppointmentServiceId) {
+        showToast(
+            "Finish editing the current service first",
+            "error"
+        );
+        return;
+    }
+
+    // ✅ ADD MODE ONLY
     serviceSelect.value = "";
     staffSelect.value = "";
     variantSelect.innerHTML = "";
@@ -54,6 +64,7 @@ addServiceBtn.addEventListener('click', () => {
     loadServices();
     loadStaff();
 });
+
 
 
 function loadServices() {
@@ -217,6 +228,8 @@ serviceSelect.addEventListener("change", () => {
 
 cancelServiceBtn.addEventListener("click", () => {
     serviceModal.classList.add("hidden");
+    editingAppointmentServiceId = null;
+    unlockAddService();
 });
 
 confirmAddServiceBtn.addEventListener("click", () => {
@@ -284,6 +297,7 @@ confirmAddServiceBtn.addEventListener("click", () => {
             serviceModal.classList.add("hidden");
 
             editingAppointmentServiceId = null;
+            unlockAddService();
             loadAppointmentServices();
             updateExtraProductAvailability();
             updateTransactionTotals();
@@ -319,29 +333,55 @@ document.getElementById("serviceList").addEventListener("click", e => {
 });
 
 function removeService(appointmentServiceId) {
-    if (!confirm("Remove this service?")) return;
+    pendingRemoveAppointmentServiceId = appointmentServiceId;
 
-    fetch("../php/cashier/center/remove-appointment-service.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            appointment_service_id: appointmentServiceId
-        })
-    })
-        .then(r => r.json())
-        .then(d => {
-            if (!d.success) {
-                showToast(d.error, "error");
-                return;
-            }
-
-            showToast("Service removed");
-            loadAppointmentServices();
-            updateExtraProductAvailability();
-            updateTransactionTotals();
-        });
+    const modal = document.getElementById("removeServiceModal");
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
 }
 
+document.getElementById("cancelRemoveServiceBtn")
+    .addEventListener("click", () => {
+
+        pendingRemoveAppointmentServiceId = null;
+
+        const modal = document.getElementById("removeServiceModal");
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+    });
+
+document.getElementById("confirmRemoveServiceBtn")
+    .addEventListener("click", () => {
+
+        if (!pendingRemoveAppointmentServiceId) return;
+
+        const appointmentServiceId = pendingRemoveAppointmentServiceId;
+        pendingRemoveAppointmentServiceId = null;
+
+        const modal = document.getElementById("removeServiceModal");
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+
+        fetch("../php/cashier/center/remove-appointment-service.php", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                appointment_service_id: appointmentServiceId
+            })
+        })
+            .then(r => r.json())
+            .then(d => {
+                if (!d.success) {
+                    showToast(d.error, "error");
+                    return;
+                }
+
+                showToast("Service removed");
+                loadAppointmentServices();
+                updateExtraProductAvailability();
+                updateTransactionTotals();
+            });
+    });
 
 function highlightActiveService(id) {
     document.querySelectorAll(".service-card").forEach(card => {
@@ -380,6 +420,8 @@ function setActiveContext(text) {
 
 async function openEditService(appointmentServiceId) {
     editingAppointmentServiceId = appointmentServiceId;
+
+    lockAddService("You are editing a service");
 
     // reset UI
     document.getElementById("variantWrapper").classList.add("hidden");
@@ -461,8 +503,11 @@ function renderServiceProductUsageEditor(
     const locked = transactionStatus === "locked";
 
     box.innerHTML = `
-        <div class="font-medium mb-2 text-xs">
+        <div class="font-medium mb-1 text-xs">
             Product Usage
+        </div>
+        <div class="mb-2 text-[11px] text-gray-500 italic">
+            Changes are saved automatically.
         </div>
         ${products.map(p => {
 
@@ -486,7 +531,7 @@ function renderServiceProductUsageEditor(
                         value="${p.quantity_used || p.default_qty}"
                         ${locked ? "disabled" : ""}
                         class="w-20 px-2 py-1 rounded border text-right"
-                        onchange="updateServiceProductUsage(
+                        onblur="updateServiceProductUsage(
                             ${appointmentServiceId},
                             ${p.product_id},
                             this.value
@@ -504,12 +549,18 @@ function renderServiceProductUsageEditor(
     `;
 }
 
-
 async function updateServiceProductUsage(
     appointmentServiceId,
     productId,
     quantity
 ) {
+    const qty = parseFloat(quantity);
+
+    if (isNaN(qty) || qty < 0) {
+        showToast("Invalid quantity", "error");
+        return;
+    }
+
     const res = await fetch(
         "../php/cashier/center/products/update-service-product-usage.php",
         {
@@ -518,7 +569,7 @@ async function updateServiceProductUsage(
             body: JSON.stringify({
                 appointment_service_id: appointmentServiceId,
                 product_id: productId,
-                quantity_used: quantity
+                quantity_used: qty
             })
         }
     );
@@ -529,5 +580,22 @@ async function updateServiceProductUsage(
         return;
     }
 
-    updateTransactionTotals();
+    // 🔥 ADD THIS
+    if (CashierState.activeTransactionId) {
+        loadTransaction(CashierState.activeTransactionId);
+    }
+
+    showToast("Usage saved — totals updated", "success");
+}
+
+function lockAddService(reason = "Finish editing the service first") {
+    addServiceBtn.disabled = true;
+    addServiceBtn.classList.add("opacity-50", "cursor-not-allowed");
+    addServiceBtn.dataset.lockReason = reason;
+}
+
+function unlockAddService() {
+    addServiceBtn.disabled = false;
+    addServiceBtn.classList.remove("opacity-50", "cursor-not-allowed");
+    delete addServiceBtn.dataset.lockReason;
 }

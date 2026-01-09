@@ -45,6 +45,33 @@ function recalcTransaction(mysqli $conn, int $transaction_id)
     $serviceTotal = (float)$stmt->get_result()->fetch_assoc()['total'];
 
     // =====================
+    // CONSUMABLE PRODUCTS TOTAL
+    // =====================
+    $stmt = $conn->prepare("
+        SELECT
+            COALESCE(SUM(
+                CASE
+                    WHEN p.unit_per_item > 0
+                    THEN (asp.quantity_used / p.unit_per_item) * p.price
+                    ELSE 0
+                END
+            ), 0) AS total
+        FROM spa_transaction_services ts
+        JOIN appointment_services aps ON aps.id = ts.appointment_service_id
+        JOIN appointment_service_products asp ON asp.appointment_service_id = aps.id
+        JOIN products p ON p.id = asp.product_id
+        WHERE ts.transaction_id = ?
+        AND p.product_type = 'consumable'
+        AND asp.quantity_used > 0
+    ");
+    $stmt->bind_param("i", $transaction_id);
+    $stmt->execute();
+    $consumableTotal = round(
+        (float)$stmt->get_result()->fetch_assoc()['total'],
+        2
+    );
+
+    // =====================
     // PRODUCTS TOTAL
     // =====================
     $stmt = $conn->prepare("
@@ -56,7 +83,7 @@ function recalcTransaction(mysqli $conn, int $transaction_id)
     $stmt->execute();
     $productTotal = (float)$stmt->get_result()->fetch_assoc()['total'];
 
-    $grandTotal = $serviceTotal + $productTotal;
+    $grandTotal = $serviceTotal + $productTotal + $consumableTotal;
 
     // =====================
     // UPDATE TRANSACTION (FIXED)

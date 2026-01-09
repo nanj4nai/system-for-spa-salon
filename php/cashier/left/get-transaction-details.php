@@ -16,6 +16,22 @@ if ($transaction_id <= 0) {
     echo json_encode(["success" => false, "error" => "Invalid transaction"]);
     exit;
 }
+// =========================
+// VAT SETTINGS
+// =========================
+$vat_rate = 0;
+
+$set = $conn->query("
+    SELECT vat_rate
+    FROM settings
+    ORDER BY id ASC
+    LIMIT 1
+");
+
+if ($set && $set->num_rows > 0) {
+    $vat_rate = (float)$set->fetch_assoc()['vat_rate']; // e.g. 12.00
+}
+
 
 /* 🔥 Recalculate transaction */
 recalcTransaction($conn, $transaction_id);
@@ -75,13 +91,17 @@ while ($row = $res->fetch_assoc()) {
 
     $row['products_used'] =
         $serviceProductsByService[$asid] ?? [];
-
-    // 🔥 add product totals into service total
-    foreach ($row['products_used'] as $p) {
-        $row['total_price'] += $p['total_price'];
-    }
-
     $services[] = $row;
+}
+
+$product_usage_total = 0;
+
+foreach ($services as $s) {
+    if (!empty($s['products_used'])) {
+        foreach ($s['products_used'] as $p) {
+            $product_usage_total += (float)$p['total_price'];
+        }
+    }
 }
 
 
@@ -112,16 +132,19 @@ if ($appointment_id > 0) {
 ========================= */
 $services_total = 0;
 foreach ($services as $s) {
-    $services_total += (float)$s['total_price'];
+    $services_total += (float)$s['total_price']; // service only
 }
 
-$products_total = 0;
+$extra_products_total = 0;
 foreach ($products as $p) {
-    $products_total += (float)$p['total_price'];
+    $extra_products_total += (float)$p['total_price'];
 }
+
+$products_total = $product_usage_total + $extra_products_total;
 
 $subtotal = $services_total + $products_total;
-$grand_total = $subtotal;
+$vat_amount = round(($subtotal * $vat_rate) / 100, 2);
+$grand_total = round($subtotal + $vat_amount, 2);
 
 echo json_encode([
     "success" => true,
@@ -130,8 +153,12 @@ echo json_encode([
     "products" => $products,
     "totals" => [
         "services_total" => $services_total,
+        "consumables_total" => $product_usage_total,
+        "extra_products_total" => $extra_products_total,
         "products_total" => $products_total,
         "subtotal" => $subtotal,
+        "vat_rate" => $vat_rate,
+        "vat_amount" => $vat_amount,
         "grand_total" => $grand_total
     ]
 ]);
