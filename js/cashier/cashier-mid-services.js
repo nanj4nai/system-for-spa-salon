@@ -8,6 +8,7 @@ const staffSelect = document.getElementById("staffSelect");
 const variantSelect = document.getElementById("variantSelect");
 let editingAppointmentServiceId = null;
 let pendingRemoveAppointmentServiceId = null;
+let pendingRemoveServiceName = "";
 
 function hasDuplicateService(serviceId, variantId, excludeAppointmentServiceId = null) {
     const cards = document.querySelectorAll(".service-card");
@@ -335,6 +336,22 @@ document.getElementById("serviceList").addEventListener("click", e => {
 function removeService(appointmentServiceId) {
     pendingRemoveAppointmentServiceId = appointmentServiceId;
 
+    const card = document.querySelector(
+        `.service-card[data-appointment-service-id="${appointmentServiceId}"]`
+    );
+
+    let serviceName =
+        card?.querySelector(".font-medium")?.textContent || "Selected service";
+
+    let variantText = card?.querySelector(".text-xs.text-gray-400")?.textContent;
+
+    if (variantText && variantText.toLowerCase().includes("variant")) {
+        serviceName += `\n${variantText}`;
+    }
+
+    document.getElementById("removeServiceName").innerHTML =
+        serviceName.replace("\n", "<br>");
+
     const modal = document.getElementById("removeServiceModal");
     modal.classList.remove("hidden");
     modal.classList.add("flex");
@@ -344,6 +361,7 @@ document.getElementById("cancelRemoveServiceBtn")
     .addEventListener("click", () => {
 
         pendingRemoveAppointmentServiceId = null;
+        pendingRemoveServiceName = "";
 
         const modal = document.getElementById("removeServiceModal");
         modal.classList.add("hidden");
@@ -356,7 +374,9 @@ document.getElementById("confirmRemoveServiceBtn")
         if (!pendingRemoveAppointmentServiceId) return;
 
         const appointmentServiceId = pendingRemoveAppointmentServiceId;
+
         pendingRemoveAppointmentServiceId = null;
+        pendingRemoveServiceName = "";
 
         const modal = document.getElementById("removeServiceModal");
         modal.classList.add("hidden");

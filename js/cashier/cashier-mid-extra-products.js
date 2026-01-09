@@ -1,4 +1,6 @@
 let editingExtraProductId = null;
+let pendingRemoveExtraProductId = null;
+let pendingRemoveExtraProductName = "";
 
 function loadServiceProducts(serviceId) {
     const box = document.getElementById("serviceProductsPreview");
@@ -30,8 +32,15 @@ function loadServiceProducts(serviceId) {
 
             box.innerHTML = `
                 <div class="font-medium mb-1 text-xs">
-                    Products to be used:
+                    Products to be used
                 </div>
+
+                <!-- Friendly reminder -->
+                <div class="mb-2 text-[11px] text-gray-500 italic">
+                    Tip: The quantity shown is only a guide.
+                    You can change it later to match what was actually used.
+                </div>
+
                 ${d.products.map(p => `
                     <div class="flex justify-between items-center text-xs
                         ${p.stock <= 0 ? "opacity-50 line-through" : ""}">
@@ -105,25 +114,65 @@ function loadAllProducts() {
 
 
 function removeExtraProduct(id) {
-    if (!confirm("Remove this product?")) return;
+    pendingRemoveExtraProductId = id;
 
-    fetch("../php/cashier/center/products/remove-extra-product.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id })
-    })
-        .then(r => r.json())
-        .then(d => {
-            if (!d.success) {
-                showToast(d.error, "error");
-                return;
-            }
+    const card = document.querySelector(
+        `[data-extra-product-id="${id}"]`
+    );
 
-            showToast("Product removed");
-            loadExtraProducts();
-            updateTransactionTotals();
-        });
+    pendingRemoveExtraProductName =
+        card?.querySelector(".font-medium")?.textContent || "Selected product";
+
+    document.getElementById("removeExtraProductName").textContent =
+        pendingRemoveExtraProductName;
+
+    const modal = document.getElementById("removeExtraProductModal");
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
 }
+
+document.getElementById("cancelRemoveExtraProductBtn")
+    .addEventListener("click", () => {
+
+        pendingRemoveExtraProductId = null;
+        pendingRemoveExtraProductName = "";
+
+        const modal = document.getElementById("removeExtraProductModal");
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+    });
+
+document.getElementById("confirmRemoveExtraProductBtn")
+    .addEventListener("click", () => {
+
+        if (!pendingRemoveExtraProductId) return;
+
+        const id = pendingRemoveExtraProductId;
+
+        pendingRemoveExtraProductId = null;
+        pendingRemoveExtraProductName = "";
+
+        const modal = document.getElementById("removeExtraProductModal");
+        modal.classList.add("hidden");
+        modal.classList.remove("flex");
+
+        fetch("../php/cashier/center/products/remove-extra-product.php", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id })
+        })
+            .then(r => r.json())
+            .then(d => {
+                if (!d.success) {
+                    showToast(d.error, "error");
+                    return;
+                }
+
+                showToast("Product removed");
+                loadExtraProducts();
+                updateTransactionTotals();
+            });
+    });
 
 function loadExtraProducts() {
     const box = document.getElementById("extraProductList");
@@ -137,7 +186,10 @@ function loadExtraProducts() {
             }
 
             box.innerHTML = d.products.map(p => `
-                <div class="flex justify-between items-center border p-2 rounded">
+                <div
+                    class="flex justify-between items-center border p-2 rounded"
+                    data-extra-product-id="${p.id}"
+                >
                     <div>
                         <div class="font-medium">${p.name}</div>
                         <div class="text-xs text-gray-500">
@@ -145,13 +197,15 @@ function loadExtraProducts() {
                         </div>
                     </div>
                     <div class="flex gap-2">
-                        <button class="text-red-500 text-xs"
+                        <button
+                            class="text-red-500 text-xs"
                             onclick="removeExtraProduct(${p.id})">
                             Remove
                         </button>
                     </div>
                 </div>
             `).join("");
+
         });
 }
 

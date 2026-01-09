@@ -741,8 +741,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Apply rules immediately if productId exists
         if (productId) {
-            productSelect.dispatchEvent(new Event("change"));
+            productSelect.value = String(productId); // ✅ SET VALUE FIRST
+            productSelect.dispatchEvent(new Event("change")); // then apply rules
         }
+
 
         productContainer.appendChild(div);
         updateAllProductOptions();

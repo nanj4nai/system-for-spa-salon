@@ -408,17 +408,67 @@ $username     = $_SESSION['username'] ?? 'Cashier';
         </div>
     </div>
 
+    <!-- REMOVE EXTRA PRODUCT MODAL -->
+    <div id="removeExtraProductModal"
+        class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm">
+
+            <h3 class="text-lg font-semibold mb-2 text-red-600">
+                Remove Product
+            </h3>
+
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                You are about to remove:
+            </p>
+
+            <div class="mb-3 px-3 py-2 rounded bg-gray-100 dark:bg-gray-700">
+                <span id="removeExtraProductName"
+                    class="font-medium text-sm">
+                    —
+                </span>
+            </div>
+
+            <p class="text-xs text-red-500 mb-4">
+                This cannot be undone. The product will be removed from the transaction.
+            </p>
+
+            <div class="flex justify-end gap-2">
+                <button id="cancelRemoveExtraProductBtn"
+                    class="px-4 py-2 text-sm rounded bg-gray-200 dark:bg-gray-600">
+                    Cancel
+                </button>
+
+                <button id="confirmRemoveExtraProductBtn"
+                    class="px-4 py-2 text-sm rounded bg-red-600 text-white">
+                    Remove
+                </button>
+            </div>
+        </div>
+    </div>
+
+
     <!-- REMOVE SERVICE MODAL -->
     <div id="removeServiceModal"
         class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
         <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm">
 
-            <h3 class="text-lg font-semibold mb-2">
+            <h3 class="text-lg font-semibold mb-2 text-red-600">
                 Remove Service
             </h3>
 
-            <p class="text-sm text-gray-500 mb-4">
-                This service and its product usage will be removed from the transaction.
+            <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                You are about to remove:
+            </p>
+
+            <div class="mb-3 px-3 py-2 rounded bg-gray-100 dark:bg-gray-700">
+                <span id="removeServiceName"
+                    class="font-medium text-sm">
+                    —
+                </span>
+            </div>
+
+            <p class="text-xs text-red-500 mb-4">
+                This cannot be undone. All related product usage will be removed.
             </p>
 
             <div class="flex justify-end gap-2">
