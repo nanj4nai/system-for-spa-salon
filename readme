@@ -1,0 +1,6 @@
+
+-- Account Setup 
+1. go to acc.sql paste the code into the sql query, 
+2. then run this to your browser 
+http://localhost/wellness_system/php/seed_users.php
+to get the first accounts setup

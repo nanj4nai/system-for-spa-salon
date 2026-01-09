@@ -1,0 +1,46 @@
+please remove portal button on the landing page please.
+
+we can use sub domain.
+
+
+admin.endonela-foundation.org
+
+or a url directoty.
+
+endonela-foundation.org/adminportal 
+
+
+on Admin Panel:
+
+on news segment:
+cant use edit button to edit no function.
+
+
+add delete modal validation.
+
+
+add pagination on all tables. user can choose data rows default is 25-50-100
+
+on reports segment: 
+add search field on all tables and sorting on each columns.
+
+
+add courses:
+bread and pastry nc II
+
+fix quick links on header navigation to be more responsive and not overlay other 
+Front-end components.
+
+on news please add functionality for 2 or more images to upload.
+
+on news upload please make it default that a post can be active automatically.
+
+on News & info have a new window/segment po for a list of news just like the all the project quicklink.
+
+on projects add search field. and a quick donate button.
+
+on services not clickable.
+
+
+
+
