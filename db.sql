@@ -454,4 +454,7 @@ ALTER TABLE spa_transactions
 ADD COLUMN status ENUM('editing','locked','paid','cancelled')
 DEFAULT 'editing';
 
+-- include vat flag
+ALTER TABLE spa_transactions
+ADD include_vat TINYINT(1) DEFAULT 1;
 

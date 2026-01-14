@@ -170,6 +170,15 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                 </div>
 
                 <hr class="border-gray-200 dark:border-gray-700">
+                <!-- VAT Toggle -->
+                <div class="flex items-center justify-between text-xs mt-2">
+                    <span>Include VAT</span>
+                    <button
+                        id="toggleVatBtn"
+                        class="px-2 py-1 rounded border text-[11px]">
+                        ON
+                    </button>
+                </div>
 
                 <!-- Totals -->
                 <div class="space-y-1">

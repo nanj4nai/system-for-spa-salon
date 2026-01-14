@@ -47,6 +47,7 @@ $stmt = $conn->prepare("
         t.transaction_number,
         t.payment_status,
         t.appointment_id,
+        t.include_vat,
         c.full_name,
         c.contact_number
     FROM spa_transactions t
@@ -64,7 +65,7 @@ if ($res->num_rows === 0) {
 
 $transaction = $res->fetch_assoc();
 $appointment_id = (int)$transaction['appointment_id'];
-
+$include_vat    = (int)$transaction['include_vat'];
 /* =========================
    SERVICES (Transaction-based)
 ========================= */
@@ -143,8 +144,13 @@ foreach ($products as $p) {
 $products_total = $product_usage_total + $extra_products_total;
 
 $subtotal = $services_total + $products_total;
-$vat_amount = round(($subtotal * $vat_rate) / 100, 2);
-$grand_total = round($subtotal + $vat_amount, 2);
+if ($include_vat === 1) {
+    $vat_amount = round(($subtotal * $vat_rate) / 100, 2);
+    $grand_total = round($subtotal + $vat_amount, 2);
+} else {
+    $vat_amount = 0;
+    $grand_total = round($subtotal, 2);
+}
 
 echo json_encode([
     "success" => true,
@@ -157,8 +163,10 @@ echo json_encode([
         "extra_products_total" => $extra_products_total,
         "products_total" => $products_total,
         "subtotal" => $subtotal,
-        "vat_rate" => $vat_rate,
+        "vat_rate" => $include_vat ? $vat_rate : 0,
         "vat_amount" => $vat_amount,
-        "grand_total" => $grand_total
+        "grand_total" => $grand_total,
+        "include_vat" => $include_vat
     ]
+
 ]);

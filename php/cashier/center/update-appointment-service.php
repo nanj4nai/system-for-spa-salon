@@ -76,39 +76,6 @@ try {
         );
     }
 
-
-    /* =====================
-       RESTORE OLD PRODUCT STOCK
-    ===================== */
-    $stmt = $conn->prepare("
-        SELECT product_id, quantity_used
-        FROM appointment_service_products
-        WHERE appointment_service_id = ?
-    ");
-    $stmt->bind_param("i", $appointment_service_id);
-    $stmt->execute();
-
-    $res = $stmt->get_result();
-    while ($row = $res->fetch_assoc()) {
-        $stmt2 = $conn->prepare("
-            UPDATE products
-            SET stock = stock + ?
-            WHERE id = ?
-        ");
-        $stmt2->bind_param("di", $row['quantity_used'], $row['product_id']);
-        $stmt2->execute();
-    }
-
-    /* =====================
-       DELETE OLD PRODUCT USAGE
-    ===================== */
-    $stmt = $conn->prepare("
-        DELETE FROM appointment_service_products
-        WHERE appointment_service_id = ?
-    ");
-    $stmt->bind_param("i", $appointment_service_id);
-    $stmt->execute();
-
     /* =====================
        UPDATE APPOINTMENT SERVICE
     ===================== */
@@ -126,51 +93,6 @@ try {
         $appointment_service_id
     );
     $stmt->execute();
-
-    /* =====================
-       RE-ATTACH PRODUCTS
-    ===================== */
-    $stmt = $conn->prepare("
-        SELECT sp.product_id, sp.quantity, p.unit, p.stock
-        FROM service_products sp
-        JOIN products p ON p.id = sp.product_id
-        WHERE sp.service_id = ?
-    ");
-    $stmt->bind_param("i", $service_id);
-    $stmt->execute();
-
-    $res = $stmt->get_result();
-    while ($row = $res->fetch_assoc()) {
-        $usedQty = $row['quantity'] * $quantity;
-
-        if ($row['stock'] < $usedQty) {
-            throw new Exception("Not enough stock for product");
-        }
-
-        // insert usage
-        $stmt2 = $conn->prepare("
-            INSERT INTO appointment_service_products
-            (appointment_service_id, product_id, quantity_used, unit)
-            VALUES (?, ?, ?, ?)
-        ");
-        $stmt2->bind_param(
-            "iids",
-            $appointment_service_id,
-            $row['product_id'],
-            $usedQty,
-            $row['unit']
-        );
-        $stmt2->execute();
-
-        // deduct stock
-        $stmt3 = $conn->prepare("
-            UPDATE products
-            SET stock = stock - ?
-            WHERE id = ?
-        ");
-        $stmt3->bind_param("di", $usedQty, $row['product_id']);
-        $stmt3->execute();
-    }
 
     /* =====================
    UPDATE TRANSACTION SERVICE (SAFE)
@@ -223,8 +145,9 @@ try {
     }
 
     // 🔥 recalc totals
-    recalcTransaction($conn, $txn['id']);
-
+    if ($txn) {
+        recalcTransaction($conn, $txn['id']);
+    }
     $conn->commit();
 
     echo json_encode(["success" => true]);

@@ -33,60 +33,87 @@ function getOpenShiftId(mysqli $conn, int $user_id = null)
 function recalcTransaction(mysqli $conn, int $transaction_id)
 {
     // =====================
+    // LOAD VAT SETTINGS
+    // =====================
+    $stmt = $conn->prepare("
+        SELECT include_vat
+        FROM spa_transactions
+        WHERE id = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("i", $transaction_id);
+    $stmt->execute();
+    $tx = $stmt->get_result()->fetch_assoc();
+
+    if (!$tx) return;
+
+    $includeVat = (int)$tx['include_vat'];
+
+    // global VAT rate (settings table)
+    $vatRate = 0.12;
+
+    // =====================
     // SERVICES TOTAL
     // =====================
     $stmt = $conn->prepare("
-        SELECT COALESCE(SUM(total_price), 0) AS total
+        SELECT COALESCE(SUM(total_price), 0)
         FROM spa_transaction_services
         WHERE transaction_id = ?
     ");
     $stmt->bind_param("i", $transaction_id);
     $stmt->execute();
-    $serviceTotal = (float)$stmt->get_result()->fetch_assoc()['total'];
+    $serviceTotal = (float)$stmt->get_result()->fetch_row()[0];
 
     // =====================
-    // CONSUMABLE PRODUCTS TOTAL
+    // CONSUMABLE TOTAL
     // =====================
     $stmt = $conn->prepare("
-        SELECT
-            COALESCE(SUM(
-                CASE
-                    WHEN p.unit_per_item > 0
-                    THEN (asp.quantity_used / p.unit_per_item) * p.price
-                    ELSE 0
-                END
-            ), 0) AS total
+        SELECT COALESCE(SUM(
+            CASE
+                WHEN p.unit_per_item > 0
+                THEN (asp.quantity_used / p.unit_per_item) * p.price
+                ELSE 0
+            END
+        ), 0)
         FROM spa_transaction_services ts
         JOIN appointment_services aps ON aps.id = ts.appointment_service_id
         JOIN appointment_service_products asp ON asp.appointment_service_id = aps.id
         JOIN products p ON p.id = asp.product_id
         WHERE ts.transaction_id = ?
         AND p.product_type = 'consumable'
-        AND asp.quantity_used > 0
     ");
     $stmt->bind_param("i", $transaction_id);
     $stmt->execute();
-    $consumableTotal = round(
-        (float)$stmt->get_result()->fetch_assoc()['total'],
-        2
-    );
+    $consumableTotal = (float)$stmt->get_result()->fetch_row()[0];
 
     // =====================
-    // PRODUCTS TOTAL
+    // EXTRA PRODUCTS
     // =====================
     $stmt = $conn->prepare("
-        SELECT COALESCE(SUM(total_price), 0) AS total
+        SELECT COALESCE(SUM(total_price), 0)
         FROM product_sales
         WHERE transaction_id = ?
     ");
     $stmt->bind_param("i", $transaction_id);
     $stmt->execute();
-    $productTotal = (float)$stmt->get_result()->fetch_assoc()['total'];
-
-    $grandTotal = $serviceTotal + $productTotal + $consumableTotal;
+    $extraProductTotal = (float)$stmt->get_result()->fetch_row()[0];
 
     // =====================
-    // UPDATE TRANSACTION (FIXED)
+    // SUBTOTAL
+    // =====================
+    $subtotal = $serviceTotal + $consumableTotal + $extraProductTotal;
+
+    // =====================
+    // VAT
+    // =====================
+    $vatAmount = $includeVat
+        ? round($subtotal * $vatRate, 2)
+        : 0;
+
+    $grandTotal = $subtotal + $vatAmount;
+
+    // =====================
+    // UPDATE TRANSACTION
     // =====================
     $stmt = $conn->prepare("
         UPDATE spa_transactions
@@ -100,7 +127,6 @@ function recalcTransaction(mysqli $conn, int $transaction_id)
             END
         WHERE id = ?
     ");
-
     $stmt->bind_param(
         "dddi",
         $grandTotal,
@@ -108,9 +134,9 @@ function recalcTransaction(mysqli $conn, int $transaction_id)
         $grandTotal,
         $transaction_id
     );
-
     $stmt->execute();
 }
+
 
 function getServiceProductUsage(mysqli $conn, int $transaction_id): array
 {

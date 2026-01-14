@@ -248,6 +248,7 @@ function resetExtraProductsUI() {
 function renderPaymentBreakdown(data) {
     const serviceBox = document.getElementById("serviceBreakdown");
     const productBox = document.getElementById("productBreakdown");
+    const vatBtn = document.getElementById("toggleVatBtn");
 
     serviceBox.innerHTML = "";
     productBox.innerHTML = "";
@@ -297,6 +298,12 @@ function renderPaymentBreakdown(data) {
     } else {
         productBox.innerHTML =
             `<div class="text-xs italic text-gray-400">No extra products</div>`;
+    }
+
+    if (vatBtn) {
+        const enabled = data.totals.include_vat == 1;
+        vatBtn.dataset.enabled = enabled ? "1" : "0";
+        vatBtn.textContent = enabled ? "ON" : "OFF";
     }
 
     // ======================
@@ -389,3 +396,31 @@ function startLockCountdown(seconds = 5) {
         }
     }, 1000);
 }
+
+document.getElementById("toggleVatBtn").addEventListener("click", async () => {
+    if (!CashierState.activeTransactionId) return;
+
+    const btn = document.getElementById("toggleVatBtn");
+    const includeVat = btn.dataset.enabled !== "1";
+
+    const res = await fetch("../php/cashier/left/toggle-vat.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            transaction_id: CashierState.activeTransactionId,
+            include_vat: includeVat ? 1 : 0
+        })
+    });
+
+    const d = await res.json();
+    if (!d.success) {
+        showToast(d.error || "Failed to update VAT", "error");
+        return;
+    }
+
+    btn.dataset.enabled = includeVat ? "1" : "0";
+    btn.textContent = includeVat ? "ON" : "OFF";
+
+    // reload totals
+    loadTransaction(CashierState.activeTransactionId);
+});
