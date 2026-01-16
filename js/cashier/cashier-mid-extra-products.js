@@ -89,7 +89,7 @@ function loadAllProducts() {
                             data-stock="${p.stock}"
                             data-unit-per-item="${p.unit_per_item || ""}"
                             data-price="${p.price}">
-                            ${(() => {
+                        ${(() => {
                         if (p.used_in_service) {
                             return `🔒 ${p.name} — included in service`;
                         }
@@ -103,8 +103,10 @@ function loadAllProducts() {
                             return `${p.name} (${p.stock} pcs)`;
                         }
 
-                        return `${p.name} (reusable)`;
+                        // ✅ reusable
+                        return `${p.name} (reusable — ${p.stock} available)`;
                     })()}
+
                         </option>
                     `;
             }).join("")}
@@ -256,7 +258,7 @@ document.getElementById("confirmExtraProductBtn").addEventListener("click", () =
         body: JSON.stringify({
             appointment_id: CashierState.activeAppointmentId,
             product_id: opt.value,
-            quantity: type === "reusable" ? 1 : qty
+            quantity: qty
         })
     })
         .then(r => r.json())
@@ -301,10 +303,13 @@ document.getElementById("extraProductSelect").addEventListener("change", e => {
     info.classList.remove("hidden");
 
     if (type === "reusable") {
-        // towels, tools
-        qtyWrapper.classList.add("hidden");
-        qtyInput.value = 1;
-        info.textContent = "Reusable item — not consumed or deducted from stock";
+        qtyWrapper.classList.remove("hidden");
+        qtyInput.step = 1;
+        qtyInput.min = 1;
+        qtyInput.max = stock; // 🔥 limit to available
+        label.textContent = "Quantity (pcs)";
+        info.textContent =
+            `Reusable item — ${stock} available (charged per piece, not deducted from stock)`;
     }
 
     else if (type === "one_time") {

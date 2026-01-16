@@ -485,12 +485,15 @@ async function openEditService(appointmentServiceId) {
 
     if (v.success && v.variants.length) {
         variantSelect.innerHTML = v.variants.map(opt => `
-            <option value="${opt.id}">${opt.name}</option>
-        `).join("");
+        <option value="${opt.id}">
+            ${opt.name} — ₱${opt.price}
+        </option>
+    `).join("");
 
         variantSelect.value = s.variant_id || "";
         document.getElementById("variantWrapper").classList.remove("hidden");
     }
+
 
     serviceModal.classList.remove("hidden");
     serviceModal.classList.add("flex");
@@ -550,7 +553,17 @@ function renderServiceProductUsageEditor(
                         min="0"
                         value="${p.quantity_used || p.default_qty}"
                         ${locked ? "disabled" : ""}
-                        class="w-20 px-2 py-1 rounded border text-right"
+                        class="
+                            w-20 px-2 py-1 text-right rounded-md
+                            border
+                            bg-white dark:bg-gray-800
+                            border-gray-300 dark:border-gray-600
+                            text-gray-900 dark:text-gray-100
+                            placeholder-gray-400 dark:placeholder-gray-500
+                            focus:outline-none focus:ring-1
+                            focus:ring-green-500 focus:border-green-500
+                            disabled:opacity-60 disabled:cursor-not-allowed
+                        "
                         onblur="updateServiceProductUsage(
                             ${appointmentServiceId},
                             ${p.product_id},

@@ -53,10 +53,16 @@ try {
        APPLY BUSINESS RULES
     ===================== */
     if ($productType === 'reusable') {
-        // towels, tools, etc.
-        $quantity    = 1;
-        $unit_price  = 0;
-        $total_price = 0;
+        if ($quantity <= 0) {
+            throw new Exception("Invalid quantity");
+        }
+
+        if ($quantity > $stock) {
+            throw new Exception("Not enough reusable items available");
+        }
+
+        $unit_price  = $price;
+        $total_price = $unit_price * $quantity;
     } else {
         // consumable OR one_time
         if ($stock < $quantity) {
