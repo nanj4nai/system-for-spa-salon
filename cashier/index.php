@@ -135,46 +135,54 @@ $username     = $_SESSION['username'] ?? 'Cashier';
         </main>
 
         <!-- ===== RIGHT ===== -->
-        <aside class="w-80 bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4 shadow-sm">
+        <aside
+            class="w-80 bg-white dark:bg-gray-800 rounded-xl
+           border border-gray-200 dark:border-gray-700
+           p-4 shadow-sm flex flex-col">
 
-            <h2 class="font-semibold mb-1">Transaction & Payment</h2>
-            <p class="text-xs text-gray-400 mb-4">
-                Review total and proceed to payment
-            </p>
-            <div class="panel-tip hidden text-xs mb-4
-                bg-green-50 dark:bg-gray-700
-                text-green-700 dark:text-green-300
-                p-3 rounded-lg flex items-start gap-2">
-
-                <i data-lucide="credit-card" class="w-4 h-4 mt-0.5"></i>
-                <span>
-                    3. Review totals and complete the payment here.
-                </span>
+            <!-- HEADER -->
+            <div class="mb-4">
+                <h2 class="font-semibold">Transaction & Payment</h2>
+                <p class="text-xs text-gray-400">
+                    Review totals and complete payment
+                </p>
             </div>
-            <div id="paymentBreakdown" class="space-y-3 text-sm">
 
-                <!-- Services -->
+            <!-- BREAKDOWN -->
+            <div id="paymentBreakdown" class="flex-1 space-y-4 text-sm overflow-y-auto">
+
+                <!-- SERVICES -->
                 <div>
-                    <div class="text-xs uppercase tracking-wide text-gray-400 mb-1">
+                    <div class="text-xs font-semibold uppercase text-gray-400 mb-1">
                         Services
                     </div>
-                    <div id="serviceBreakdown" class="space-y-1"></div>
+                    <div
+                        id="serviceBreakdown"
+                        class="space-y-1 rounded-lg border
+                       border-gray-200 dark:border-gray-700
+                       p-2 bg-gray-50 dark:bg-gray-900">
+                    </div>
                 </div>
 
-                <!-- Extra Products -->
+                <!-- EXTRA PRODUCTS -->
                 <div>
-                    <div class="text-xs uppercase tracking-wide text-gray-400 mb-1">
+                    <div class="text-xs font-semibold uppercase text-gray-400 mb-1">
                         Extra Products
                     </div>
-                    <div id="productBreakdown" class="space-y-1"></div>
+                    <div
+                        id="productBreakdown"
+                        class="space-y-1 rounded-lg border
+                       border-gray-200 dark:border-gray-700
+                       p-2 bg-gray-50 dark:bg-gray-900">
+                    </div>
                 </div>
 
-                <hr class="border-gray-200 dark:border-gray-700">
+                <!-- SUMMARY CARD -->
+                <div
+                    class="rounded-xl border border-gray-200 dark:border-gray-700
+                   p-3 space-y-2 bg-white dark:bg-gray-800">
 
-
-                <!-- Totals -->
-                <div class="space-y-1">
-
+                    <!-- LINE ITEMS -->
                     <div class="flex justify-between text-xs">
                         <span>Services</span>
                         <span id="servicesTotal">₱0.00</span>
@@ -190,21 +198,17 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                         <span id="extraProductsTotal">₱0.00</span>
                     </div>
 
-                    <hr class="border-gray-200 dark:border-gray-700">
-                    <!-- VAT Toggle -->
-                    <div class="flex items-center justify-between text-xs mt-2">
+                    <div class="border-t border-gray-200 dark:border-gray-700 pt-2"></div>
+
+                    <!-- VAT -->
+                    <div class="flex items-center justify-between text-xs">
                         <span>Include VAT</span>
                         <button
                             id="toggleVatBtn"
-                            class="px-2 py-1 rounded border text-[11px]">
+                            class="px-2 py-1 rounded-md border text-[11px]
+                           border-gray-300 dark:border-gray-600">
                             ON
                         </button>
-                    </div>
-                    <hr class="border-gray-200 dark:border-gray-700">
-
-                    <div class="flex justify-between">
-                        <span>Subtotal</span>
-                        <span id="subtotalAmount">₱0.00</span>
                     </div>
 
                     <div class="flex justify-between text-xs">
@@ -212,17 +216,47 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                         <span id="vatAmount">₱0.00</span>
                     </div>
 
-                    <div class="flex justify-between font-semibold text-lg">
+                    <div class="border-t border-gray-200 dark:border-gray-700 pt-2"></div>
+
+                    <!-- SUBTOTAL -->
+                    <div class="flex justify-between font-medium">
+                        <span>Subtotal</span>
+                        <span id="subtotalAmount">₱0.00</span>
+                    </div>
+
+                    <!-- PAYMENT METHOD (PROMINENT) -->
+                    <div
+                        id="lockPaymentMethodSummary"
+                        class="mt-2 pt-2 border-t
+                       border-gray-200 dark:border-gray-700
+                       flex items-start justify-between gap-3">
+
+                        <span class="text-xs text-gray-500">
+                            Payment Method
+                        </span>
+
+                        <!-- JS injects here -->
+                        <span class="text-gray-400 italic text-xs">
+                            Loading…
+                        </span>
+                    </div>
+
+                    <!-- TOTAL -->
+                    <div
+                        class="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600
+                       flex justify-between text-lg font-semibold text-emerald-600">
                         <span>Total</span>
                         <span id="transactionTotal">₱0.00</span>
                     </div>
                 </div>
             </div>
 
+            <!-- ACTION -->
             <button
                 id="payBtn"
                 disabled
-                class="mt-6 w-full bg-green-500 text-white py-3 rounded-xl font-semibold opacity-50">
+                class="mt-4 w-full bg-emerald-600 hover:bg-emerald-700
+               text-white py-3 rounded-xl font-semibold opacity-50">
                 Proceed to Payment
             </button>
         </aside>
@@ -332,75 +366,111 @@ $username     = $_SESSION['username'] ?? 'Cashier';
             </div>
         </div>
     </div>
-
     <!-- LOCK TRANSACTION MODAL -->
     <div id="lockTransactionModal"
         class="fixed inset-0 z-50 hidden items-center justify-center
            bg-black/50 backdrop-blur-sm">
 
         <div class="bg-white dark:bg-gray-800 rounded-2xl
-                w-full max-w-lg shadow-xl
-                p-6 flex flex-col">
+            w-full max-w-lg shadow-xl
+            p-6 flex flex-col">
 
-            <!-- Header -->
-            <div class="mb-4">
-                <h3 class="text-lg font-semibold text-gray-800 dark:text-gray-100">
+            <!-- HEADER -->
+            <div class="mb-5">
+                <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
                     Review & Confirm Transaction
                 </h3>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Please review the transaction details before proceeding to payment.
+                    Please confirm the details before locking this transaction.
                 </p>
             </div>
 
-            <!-- Client / Transaction -->
-            <div class="mb-4 text-sm">
-                <div class="font-medium text-gray-800 dark:text-gray-200">
-                    <span id="lockClientName">Client Name</span>
+            <!-- CUSTOMER CARD -->
+            <div class="mb-4 rounded-lg border border-gray-200 dark:border-gray-700 p-3">
+                <div class="text-sm font-medium text-gray-800 dark:text-gray-200"
+                    id="lockClientName">
+                    Client Name
                 </div>
-                <div class="text-xs text-gray-500">
+                <div class="text-xs text-gray-500 mt-0.5">
                     Transaction #: <span id="lockTransactionNumber"></span>
                 </div>
             </div>
 
-            <!-- Items (scrollable) -->
-            <div class="flex-1 overflow-y-auto pr-1 text-sm space-y-4">
+            <!-- ITEMS (RECEIPT STYLE) -->
+            <div class="flex-1 overflow-y-auto space-y-4 text-sm">
 
-                <!-- Services -->
+                <!-- SERVICES -->
                 <div>
-                    <div class="text-xs uppercase tracking-wide text-gray-400 mb-1">
+                    <div class="text-xs font-semibold text-gray-500 uppercase mb-2">
                         Services
                     </div>
-                    <div id="lockServiceSummary" class="space-y-1"></div>
+
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-2"
+                        id="lockServiceSummary">
+                        <!-- injected -->
+                    </div>
                 </div>
 
-                <!-- Extra Products -->
+                <!-- EXTRA PRODUCTS -->
                 <div>
-                    <div class="text-xs uppercase tracking-wide text-gray-400 mb-1">
+                    <div class="text-xs font-semibold text-gray-500 uppercase mb-2">
                         Extra Products
                     </div>
-                    <div id="lockProductSummary" class="space-y-1"></div>
+
+                    <div class="rounded-lg border border-gray-200 dark:border-gray-700 p-3 space-y-2"
+                        id="lockProductSummary">
+                        <!-- injected -->
+                    </div>
                 </div>
             </div>
 
-            <!-- Totals -->
-            <div class="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
-                <div class="flex justify-between text-sm font-medium">
-                    <span>Total Amount</span>
-                    <span id="lockTotalAmount">₱0.00</span>
+            <!-- PAYMENT SUMMARY -->
+            <div class="mt-5 rounded-lg bg-gray-50 dark:bg-gray-900 p-4 text-sm space-y-2">
+
+                <div class="flex justify-between">
+                    <span class="text-gray-600 dark:text-gray-400">Services</span>
+                    <span id="lockServicesTotal">₱0.00</span>
                 </div>
 
-                <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Once confirmed, services and products can no longer be edited.
-                </p>
+                <div class="flex justify-between">
+                    <span class="text-gray-600 dark:text-gray-400">Consumables</span>
+                    <span id="lockConsumablesTotal">₱0.00</span>
+                </div>
+
+                <div class="flex justify-between">
+                    <span class="text-gray-600 dark:text-gray-400">Extra Products</span>
+                    <span id="lockExtraProductsTotal">₱0.00</span>
+                </div>
+
+                <div class="flex justify-between text-xs text-gray-500">
+                    <span>VAT (<span id="lockVatRate">12.00</span>%)</span>
+                    <span id="lockVatAmount">₱0.00</span>
+                </div>
+
+                <div class="border-t border-gray-300 dark:border-gray-700 pt-2 flex justify-between font-medium">
+                    <span>Subtotal</span>
+                    <span id="lockSubtotal">₱0.00</span>
+                </div>
+
+                <!-- FINAL TOTAL -->
+                <div class="flex justify-between text-lg font-semibold text-emerald-600">
+                    <span>Total</span>
+                    <span id="lockGrandTotal">₱0.00</span>
+                </div>
             </div>
 
-            <!-- Countdown -->
+            <!-- NOTICE -->
+            <p class="text-xs text-gray-500 text-center mt-3">
+                Once confirmed, this transaction will be locked and ready for payment.
+            </p>
+
+            <!-- COUNTDOWN -->
             <div id="lockCountdown"
-                class="text-xs text-gray-500 text-center mt-3">
+                class="text-xs text-gray-500 text-center mt-2">
                 Preparing payment…
             </div>
 
-            <!-- Actions -->
+            <!-- ACTIONS -->
             <div class="mt-4 flex justify-end gap-2">
                 <button id="cancelLockBtn"
                     class="px-4 py-2 text-sm rounded
@@ -413,7 +483,7 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                     class="px-4 py-2 text-sm rounded
                        bg-emerald-600 hover:bg-emerald-700
                        text-white font-medium">
-                    Confirm & Proceed
+                    Confirm & Lock
                 </button>
             </div>
         </div>
@@ -503,15 +573,20 @@ $username     = $_SESSION['username'] ?? 'Cashier';
             px-4 py-3 rounded-lg shadow-lg">
     </div>
 
-    <!-- ================= JS STATE CONTROLLER ================= -->
     <script src="../js/cashier/cashier-state.js"></script>
     <script src="../js/cashier/cashier-ui.js"></script>
     <script src="../js/cashier/cashier-uinicon.js"></script>
     <script src="../js/cashier/cashier-shift.js"></script>
+
+    <!-- MUST be before left-transaction -->
+    <script src="../js/cashier/cashier-right-summary.js"></script>
+
     <script src="../js/cashier/cashier-left-appointments.js"></script>
     <script src="../js/cashier/cashier-mid-services.js"></script>
     <script src="../js/cashier/cashier-mid-extra-products.js"></script>
     <script src="../js/cashier/cashier-left-transaction.js"></script>
+
+
 
 </body>
 

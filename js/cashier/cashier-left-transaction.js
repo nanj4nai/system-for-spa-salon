@@ -68,6 +68,7 @@ document.getElementById("cancelLockBtn").addEventListener("click", () => {
     modal.classList.remove("flex");
 });
 
+
 document.getElementById("confirmLockBtn").addEventListener("click", async () => {
     const res = await fetch("../php/cashier/left/lock-transaction.php", {
         method: "POST",
@@ -136,6 +137,12 @@ function loadTransaction(transactionId) {
             renderServiceList(d.services);
             renderPaymentBreakdown(d);
 
+            // ✅ ADD THIS LINE
+            if (typeof loadPaymentMethodSummary === "function") {
+                loadPaymentMethodSummary(d.transaction.transaction_id);
+            }
+
+
             enableServiceActions();
 
             if (window.setActiveContext) {
@@ -146,7 +153,6 @@ function loadTransaction(transactionId) {
             loadExtraProducts?.();
         });
 }
-
 
 // ================================
 // UI HELPERS
@@ -332,6 +338,7 @@ function renderPaymentBreakdown(data) {
 }
 
 function populateLockSummary(data) {
+    // Client info
     document.getElementById("lockClientName").textContent =
         data.transaction.full_name;
 
@@ -344,35 +351,82 @@ function populateLockSummary(data) {
     serviceBox.innerHTML = "";
     productBox.innerHTML = "";
 
+    // ======================
+    // SERVICES (detailed)
+    // ======================
     if (data.services.length) {
         data.services.forEach(s => {
             serviceBox.innerHTML += `
-                <div class="flex justify-between">
-                    <span>${s.service_name}</span>
-                    <span>₱${Number(s.total_price).toFixed(2)}</span>
+                <div class="text-xs">
+                    <div class="flex justify-between font-medium">
+                        <span>${s.service_name}</span>
+                        <span>₱${Number(s.total_price).toFixed(2)}</span>
+                    </div>
+
+                    ${s.products_used?.length ? `
+                        <div class="ml-3 mt-1 space-y-0.5 text-[11px] text-gray-500">
+                            ${s.products_used.map(p => `
+                                <div class="flex justify-between">
+                                    <span>• ${p.name} (${p.quantity_used}${p.unit})</span>
+                                    <span>₱${Number(p.total_price).toFixed(2)}</span>
+                                </div>
+                            `).join("")}
+                        </div>
+                    ` : ""}
                 </div>
             `;
         });
     } else {
-        serviceBox.innerHTML = `<div class="italic text-gray-400">None</div>`;
+        serviceBox.innerHTML =
+            `<div class="italic text-gray-400">No services</div>`;
     }
 
+    // ======================
+    // EXTRA PRODUCTS
+    // ======================
     if (data.products.length) {
         data.products.forEach(p => {
             productBox.innerHTML += `
-                <div class="flex justify-between">
+                <div class="flex justify-between text-xs">
                     <span>${p.name} × ${p.quantity}${p.unit}</span>
                     <span>₱${Number(p.total_price).toFixed(2)}</span>
                 </div>
             `;
         });
     } else {
-        productBox.innerHTML = `<div class="italic text-gray-400">None</div>`;
+        productBox.innerHTML =
+            `<div class="italic text-gray-400">No extra products</div>`;
     }
 
-    document.getElementById("lockTotalAmount").textContent =
+    // ======================
+    // PAYMENT TOTALS
+    // ======================
+    document.getElementById("lockServicesTotal").textContent =
+        `₱${Number(data.totals.services_total).toFixed(2)}`;
+
+    document.getElementById("lockConsumablesTotal").textContent =
+        `₱${Number(data.totals.consumables_total).toFixed(2)}`;
+
+    document.getElementById("lockExtraProductsTotal").textContent =
+        `₱${Number(data.totals.extra_products_total).toFixed(2)}`;
+
+    document.getElementById("lockSubtotal").textContent =
+        `₱${Number(data.totals.subtotal).toFixed(2)}`;
+
+    document.getElementById("lockVatRate").textContent =
+        Number(data.totals.vat_rate).toFixed(2);
+
+    document.getElementById("lockVatAmount").textContent =
+        `₱${Number(data.totals.vat_amount).toFixed(2)}`;
+
+    document.getElementById("lockGrandTotal").textContent =
         `₱${Number(data.totals.grand_total).toFixed(2)}`;
+    // ======================
+    // PAYMENT METHOD (READ-ONLY)
+    // ======================
+    loadPaymentMethodSummary(data.transaction.transaction_id);
 }
+
 
 function startLockCountdown(seconds = 5) {
     const btn = document.getElementById("confirmLockBtn");
