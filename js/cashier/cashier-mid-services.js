@@ -40,6 +40,10 @@ function hasDuplicateService(serviceId, variantId, excludeAppointmentServiceId =
 }
 
 addServiceBtn.addEventListener('click', () => {
+    if (CashierState.transactionLocked) {
+        showToast("Transaction is locked — services cannot be modified", "error");
+        return;
+    }
 
     // 🛑 GUARD: do not reset while editing
     if (editingAppointmentServiceId) {
@@ -312,6 +316,10 @@ confirmAddServiceBtn.addEventListener("click", () => {
 });
 
 document.getElementById("serviceList").addEventListener("click", e => {
+    if (CashierState.transactionLocked) {
+        showToast("Transaction is locked", "error");
+        return;
+    }
     const btn = e.target.closest("[data-action]");
     if (!btn) return;
 

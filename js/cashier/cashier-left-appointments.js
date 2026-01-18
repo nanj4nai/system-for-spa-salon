@@ -307,16 +307,27 @@ appointmentsList.addEventListener("click", (e) => {
     if (!card) return;
 
     if (card.dataset.status === "checked_in") {
+
+        // 🔥 HARD RESET UI STATE
+        CashierState.transactionLocked = false;
+        CashierState.selectedPaymentMethod = null;
+        CashierState.lockCountdownFinished = false;
+
+        lockPaymentUI();
+        unlockPaymentMethodUI(); // will be re-locked by loadTransaction if needed
+
+        closeAllServiceModals?.();
+
         document.dispatchEvent(
             new CustomEvent("appointment:loadTransaction", {
                 detail: { appointmentId: card.dataset.appointmentId }
             })
         );
 
-        // ✅ ADD THIS
         highlightActiveAppointment(card.dataset.appointmentId);
         return;
     }
+
 
     showToast("Please check-in the client first", "error");
 });

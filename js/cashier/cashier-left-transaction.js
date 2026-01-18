@@ -2,34 +2,18 @@
 // CASHIER — TRANSACTIONS
 // Reacts to appointment events
 // ================================
-
+let lockCountdownTimer = null;
 // Listen when appointment is checked in
 document.addEventListener("appointment:checkedIn", (e) => {
     const { appointmentId, financial } = e.detail;
 
     CashierState.activeAppointmentId = appointmentId;
     CashierState.activeTransactionId = financial.transaction_id;
+    CashierState.lockCountdownFinished = false;
 
     loadTransaction(financial.transaction_id);
-
-    // 🔒 LOCKED TRANSACTION
-    if (financial.status === "locked") {
-        lockCenterUI("Transaction locked — ready for payment");
-        unlockPaymentUI();
-        return;
-    }
-
-    // 💰 PAID
-    if (financial.payment_status === "paid") {
-        lockCenterUI("Already paid");
-        lockPaymentUI("Fully paid");
-        return;
-    }
-
-    // ✏️ DEFAULT: editable
-    unlockCenterUI();
-    unlockPaymentUI();
 });
+
 
 // ================================
 // LOCK TRANSACTION FOR PAYMENT
@@ -52,6 +36,13 @@ document.getElementById("payBtn").addEventListener("click", async () => {
         showToast("Failed to load transaction summary", "error");
         return;
     }
+    CashierState.lockCountdownFinished = false;
+
+    const btn = document.getElementById("confirmLockBtn");
+    if (btn) {
+        btn.disabled = true;
+        btn.classList.add("opacity-50");
+    }
 
     populateLockSummary(d);
     startLockCountdown(5);
@@ -61,34 +52,53 @@ document.getElementById("payBtn").addEventListener("click", async () => {
     modal.classList.add("flex");
 });
 
-
 document.getElementById("cancelLockBtn").addEventListener("click", () => {
     const modal = document.getElementById("lockTransactionModal");
     modal.classList.add("hidden");
     modal.classList.remove("flex");
-});
 
-
-document.getElementById("confirmLockBtn").addEventListener("click", async () => {
-    const res = await fetch("../php/cashier/left/lock-transaction.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-            transaction_id: CashierState.activeTransactionId
-        })
-    });
-
-    const d = await res.json();
-    if (!d.success) {
-        showToast(d.error || "Failed to lock transaction", "error");
-        return;
+    // 🔥 STOP COUNTDOWN
+    if (lockCountdownTimer) {
+        clearInterval(lockCountdownTimer);
+        lockCountdownTimer = null;
     }
 
-    document.getElementById("lockTransactionModal").classList.add("hidden");
-
-    lockCenterUI("Ready for payment");
-    unlockPaymentUI();
+    CashierState.lockCountdownFinished = false;
 });
+
+
+
+document.getElementById("confirmLockBtn")
+    .addEventListener("click", async () => {
+        CashierState.lockCountdownFinished = false;
+
+        if (!CashierState.selectedPaymentMethod) {
+            showToast("Please select a payment method", "error");
+            return;
+        }
+        const res = await fetch("../php/cashier/left/lock-transaction.php", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                transaction_id: CashierState.activeTransactionId,
+                payment_method: CashierState.selectedPaymentMethod
+            })
+        });
+
+        const d = await res.json();
+        if (!d.success) {
+            showToast(d.error || "Failed to lock transaction", "error");
+            return;
+        }
+
+        CashierState.transactionLocked = true; // 🔒 SINGLE SOURCE
+
+        document.getElementById("lockTransactionModal").classList.add("hidden");
+
+        lockTransactionEditing("Transaction locked — proceed to payment");
+        lockPaymentMethodUI(); // 👈 NEW
+        openPaymentModal();
+    });
 
 
 
@@ -117,11 +127,11 @@ function createTransactionFromAppointment(appointmentId) {
             showToast("Transaction started");
         });
 }
-
 // ================================
 // LOAD TRANSACTION
 // ================================
 function loadTransaction(transactionId) {
+
     fetch(
         `../php/cashier/left/get-transaction-details.php?transaction_id=${transactionId}`,
         { cache: "no-store" }
@@ -133,26 +143,29 @@ function loadTransaction(transactionId) {
                 return;
             }
 
+            applyTransactionLockState(d.transaction);
+
+            if (CashierState.transactionLocked && d.transaction.payment_method) {
+                CashierState.selectedPaymentMethod = d.transaction.payment_method;
+            } else {
+                CashierState.selectedPaymentMethod = null;
+            }
+
             renderClientInfo(d.transaction);
             renderServiceList(d.services);
             renderPaymentBreakdown(d);
 
-            // ✅ ADD THIS LINE
-            if (typeof loadPaymentMethodSummary === "function") {
-                loadPaymentMethodSummary(d.transaction.transaction_id);
-            }
+            loadPaymentMethodSummary?.(d.transaction.transaction_id);
 
-
-            enableServiceActions();
+            loadAppointmentServices?.();
+            loadExtraProducts?.();
 
             if (window.setActiveContext) {
                 setActiveContext(`Currently working on: ${d.transaction.full_name}`);
             }
-
-            loadAppointmentServices?.();
-            loadExtraProducts?.();
         });
 }
+
 
 // ================================
 // UI HELPERS
@@ -425,28 +438,66 @@ function populateLockSummary(data) {
     // PAYMENT METHOD (READ-ONLY)
     // ======================
     loadPaymentMethodSummary(data.transaction.transaction_id);
-}
+    // ======================
+    // PAYMENT METHOD (SELECTED)
+    // ======================
+    const methodLabel = document.getElementById("lockPaymentMethodLabel");
 
+    if (methodLabel) {
+        if (CashierState.selectedPaymentMethod) {
+            methodLabel.textContent =
+                formatPaymentMethod(CashierState.selectedPaymentMethod);
+            methodLabel.classList.remove("text-red-500");
+        } else {
+            methodLabel.textContent = "Not selected";
+            methodLabel.classList.add("text-red-500");
+        }
+    }
+
+
+}
 
 function startLockCountdown(seconds = 5) {
     const btn = document.getElementById("confirmLockBtn");
     const label = document.getElementById("lockCountdown");
 
+    // 🔥 CLEAR OLD TIMER FIRST
+    if (lockCountdownTimer) {
+        clearInterval(lockCountdownTimer);
+        lockCountdownTimer = null;
+    }
+
     let remaining = seconds;
+    CashierState.lockCountdownFinished = false;
+
     btn.disabled = true;
     btn.classList.add("opacity-50");
 
     label.textContent = `Lock available in ${remaining}s`;
+    label.className = "text-center text-xs text-gray-400";
 
-    const timer = setInterval(() => {
+    lockCountdownTimer = setInterval(() => {
         remaining--;
         label.textContent = `Lock available in ${remaining}s`;
 
         if (remaining <= 0) {
-            clearInterval(timer);
-            btn.disabled = false;
-            btn.classList.remove("opacity-50");
-            label.textContent = "You may now proceed";
+            clearInterval(lockCountdownTimer);
+            lockCountdownTimer = null;
+
+            CashierState.lockCountdownFinished = true;
+
+            if (CashierState.selectedPaymentMethod) {
+                btn.disabled = false;
+                btn.classList.remove("opacity-50");
+                label.textContent = "You may now proceed";
+                label.className = "text-center text-xs text-green-600";
+            } else {
+                btn.disabled = true;
+                btn.classList.add("opacity-50");
+                label.textContent = "Select a payment method to continue";
+                label.className =
+                    "text-center text-sm font-medium text-red-500 animate-pulse";
+            }
         }
     }, 1000);
 }

@@ -23,7 +23,10 @@ async function loadPaymentMethodSummary(transactionId) {
         // ======================
         // FULLY PAID → LOCKED
         // ======================
-        if (d.payment_status === "paid" && d.payment_method) {
+        if (
+            (d.payment_status === "paid" || d.status === "locked") &&
+            d.payment_method
+        ) {
             box.innerHTML = `
                 <span class="text-gray-600 dark:text-gray-400">
                     Payment Method
@@ -66,12 +69,17 @@ async function loadPaymentMethodSummary(transactionId) {
 // UI HELPERS
 // ================================
 
-function renderPaymentOption(method, active) {
-    const isActive = method === active;
+function renderPaymentOption(method, dbMethod) {
+    const isActive =
+        method === CashierState.selectedPaymentMethod ||
+        method === dbMethod;
+    const disabled = CashierState.transactionLocked ? "disabled" : "";
     return `
-        <button
-            data-method="${method}"
-            class="payment-method-btn px-3 py-1 rounded-full border
+<button
+    type="button"
+    ${disabled}
+    data-method="${method}"
+    class="payment-method-btn px-3 py-1 rounded-full border
                 ${isActive
             ? "bg-emerald-500 text-white border-emerald-500"
             : "border-gray-300 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"}">
@@ -80,22 +88,44 @@ function renderPaymentOption(method, active) {
     `;
 }
 
-function attachPaymentMethodHandlers(transactionId) {
+function attachPaymentMethodHandlers() {
     document.querySelectorAll(".payment-method-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-            const method = btn.dataset.method;
+        btn.onclick = () => {
 
-            // Store locally for now (used on payment screen)
+            const confirmBtn = document.getElementById("confirmLockBtn");
+            if (confirmBtn && CashierState.lockCountdownFinished) {
+                confirmBtn.disabled = false;
+                confirmBtn.classList.remove("opacity-50");
+            }
+
+
+            if (CashierState.transactionLocked) {
+                showToast("Payment method is locked", "info");
+                return;
+            }
+
+            const method = btn.dataset.method;
             CashierState.selectedPaymentMethod = method;
 
-            // Re-render UI
             document.querySelectorAll(".payment-method-btn")
-                .forEach(b => b.classList.remove("bg-emerald-500", "text-white"));
+                .forEach(b =>
+                    b.classList.remove(
+                        "bg-emerald-500",
+                        "text-white",
+                        "border-emerald-500"
+                    )
+                );
 
-            btn.classList.add("bg-emerald-500", "text-white");
-        });
+            btn.classList.add(
+                "bg-emerald-500",
+                "text-white",
+                "border-emerald-500"
+            );
+        };
     });
 }
+
+
 
 // ================================
 // LABEL FORMATTER

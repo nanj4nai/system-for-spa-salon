@@ -457,6 +457,16 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                     <span>Total</span>
                     <span id="lockGrandTotal">₱0.00</span>
                 </div>
+                <!-- PAYMENT METHOD SUMMARY -->
+                <div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700
+            flex justify-between text-sm">
+                    <span class="text-gray-500">Payment Method</span>
+                    <span id="lockPaymentMethodLabel"
+                        class="font-medium text-gray-800 dark:text-gray-200">
+                        —
+                    </span>
+                </div>
+
             </div>
 
             <!-- NOTICE -->
@@ -565,6 +575,74 @@ $username     = $_SESSION['username'] ?? 'Cashier';
             </div>
         </div>
     </div>
+    <!-- PAYMENT MODAL -->
+    <div id="paymentModal"
+        class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
+
+        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm">
+
+            <h3 class="text-lg font-semibold mb-1">
+                Receive Payment
+            </h3>
+
+            <p class="text-xs text-gray-500 mb-4">
+                Enter amount received from client
+            </p>
+
+            <!-- TOTAL -->
+            <div class="mb-3 text-sm">
+                <div class="flex justify-between">
+                    <span>Total Due</span>
+                    <span id="paymentTotal" class="font-semibold">
+                        ₱0.00
+                    </span>
+                </div>
+            </div>
+
+            <!-- CASH INPUT -->
+            <div class="mb-3">
+                <label class="text-xs text-gray-500">
+                    Amount Received
+                </label>
+                <input
+                    id="cashReceivedInput"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="w-full mt-1 px-3 py-2 rounded-lg border
+                       border-gray-300 dark:border-gray-600
+                       dark:bg-gray-700"
+                    placeholder="0.00">
+            </div>
+
+            <!-- CHANGE -->
+            <div class="text-sm mb-4">
+                <div class="flex justify-between">
+                    <span>Change</span>
+                    <span id="changeAmount" class="font-medium">
+                        ₱0.00
+                    </span>
+                </div>
+            </div>
+
+            <!-- ACTIONS -->
+            <div class="flex justify-end gap-2">
+                <button
+                    id="cancelPaymentBtn"
+                    class="px-4 py-2 text-sm rounded
+                       bg-gray-200 dark:bg-gray-600">
+                    Cancel
+                </button>
+
+                <button
+                    id="confirmPaymentBtn"
+                    class="px-4 py-2 text-sm rounded
+                       bg-emerald-600 text-white">
+                    Confirm Payment
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- Toast -->
     <div id="toast"
@@ -579,6 +657,7 @@ $username     = $_SESSION['username'] ?? 'Cashier';
     <script src="../js/cashier/cashier-shift.js"></script>
 
     <!-- MUST be before left-transaction -->
+    <script src="../js/cashier/cashier-right-payment.js"></script>
     <script src="../js/cashier/cashier-right-summary.js"></script>
 
     <script src="../js/cashier/cashier-left-appointments.js"></script>

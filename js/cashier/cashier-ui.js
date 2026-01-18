@@ -73,3 +73,105 @@ function canLockTransaction() {
 
     return hasServices || hasExtraProducts;
 }
+
+// ================================
+// TRANSACTION UI LOCKING
+// ================================
+
+function lockTransactionEditing(reason = "Transaction locked") {
+    ["addServiceBtn", "addExtraProductBtn"].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = true;
+        el.classList.add("opacity-50");
+    });
+
+    document
+        .querySelectorAll("[data-remove-service], [data-remove-product]")
+        .forEach(btn =>
+            btn.classList.add("pointer-events-none", "opacity-40")
+        );
+
+    showToast(reason, "info");
+}
+
+function applyTransactionLockState(transaction) {
+    const isLocked =
+        transaction.status === "locked" ||
+        transaction.payment_status === "paid";
+
+    CashierState.transactionLocked = isLocked;
+
+    if (isLocked) {
+        // 🔒 hard lock everything
+        lockTransactionEditing();
+        lockPaymentMethodUI();
+        lockPaymentUI();
+
+        // prevent modals from staying open
+        closeAllServiceModals();
+        closePaymentModal();
+    } else {
+        // 🔓 editable
+        unlockTransactionEditing();
+        unlockPaymentMethodUI();
+        unlockPaymentUI();
+    }
+}
+
+function lockPaymentMethodUI() {
+    document
+        .querySelectorAll(".payment-method-btn")
+        .forEach(btn => {
+            btn.disabled = true;
+            btn.classList.add("opacity-50", "cursor-not-allowed");
+        });
+}
+
+function unlockPaymentMethodUI() {
+    if (CashierState.transactionLocked) return; // 🔒 safety
+    document
+        .querySelectorAll(".payment-method-btn")
+        .forEach(btn => {
+            btn.disabled = false;
+            btn.classList.remove("opacity-50", "cursor-not-allowed");
+        });
+}
+
+
+function closeAllServiceModals() {
+    [
+        "serviceModal",
+        "removeServiceModal",
+        "paymentModal"
+    ].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add("hidden");
+    });
+
+    editingAppointmentServiceId = null;
+    pendingRemoveAppointmentServiceId = null;
+}
+
+function unlockTransactionEditing() {
+    ["addServiceBtn", "addExtraProductBtn"].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = false;
+        el.classList.remove("opacity-50");
+    });
+
+    document
+        .querySelectorAll("[data-remove-service], [data-remove-product]")
+        .forEach(btn =>
+            btn.classList.remove("pointer-events-none", "opacity-40")
+        );
+}
+
+function closePaymentModal() {
+    const modal = document.getElementById("paymentModal");
+    if (!modal) return;
+
+    modal.classList.add("hidden");
+    modal.classList.remove("flex");
+}
