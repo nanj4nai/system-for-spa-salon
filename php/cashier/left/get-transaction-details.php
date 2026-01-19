@@ -11,32 +11,30 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'cashier') {
 }
 
 $transaction_id = intval($_GET['transaction_id'] ?? 0);
-
 if ($transaction_id <= 0) {
     echo json_encode(["success" => false, "error" => "Invalid transaction"]);
     exit;
 }
-// =========================
-// VAT SETTINGS
-// =========================
-$vat_rate = 0;
 
+/* =========================
+   VAT SETTINGS
+========================= */
+$vat_rate = 0;
 $set = $conn->query("
     SELECT vat_rate
     FROM settings
     ORDER BY id ASC
     LIMIT 1
 ");
-
 if ($set && $set->num_rows > 0) {
-    $vat_rate = (float)$set->fetch_assoc()['vat_rate']; // e.g. 12.00
+    $vat_rate = (float)$set->fetch_assoc()['vat_rate'];
 }
 
-
-/* 🔥 Recalculate transaction */
+/* =========================
+   RECALCULATE TRANSACTION
+========================= */
 recalcTransaction($conn, $transaction_id);
 $serviceProductsByService = getServiceProductUsage($conn, $transaction_id);
-
 
 /* =========================
    TRANSACTION + CLIENT
@@ -45,6 +43,7 @@ $stmt = $conn->prepare("
     SELECT 
         t.id AS transaction_id,
         t.transaction_number,
+        t.status,
         t.payment_status,
         t.appointment_id,
         t.include_vat,
@@ -65,9 +64,10 @@ if ($res->num_rows === 0) {
 
 $transaction = $res->fetch_assoc();
 $appointment_id = (int)$transaction['appointment_id'];
-$include_vat    = (int)$transaction['include_vat'];
+$include_vat = (int)$transaction['include_vat'];
+
 /* =========================
-   SERVICES (Transaction-based)
+   SERVICES
 ========================= */
 $stmt = $conn->prepare("
     SELECT 
@@ -84,33 +84,28 @@ $stmt = $conn->prepare("
 $stmt->bind_param("i", $transaction_id);
 $stmt->execute();
 
-$res = $stmt->get_result();
 $services = [];
-
+$res = $stmt->get_result();
 while ($row = $res->fetch_assoc()) {
     $asid = $row['appointment_service_id'];
-
-    $row['products_used'] =
-        $serviceProductsByService[$asid] ?? [];
+    $row['products_used'] = $serviceProductsByService[$asid] ?? [];
     $services[] = $row;
 }
 
+/* =========================
+   PRODUCT USAGE TOTAL
+========================= */
 $product_usage_total = 0;
-
 foreach ($services as $s) {
-    if (!empty($s['products_used'])) {
-        foreach ($s['products_used'] as $p) {
-            $product_usage_total += (float)$p['total_price'];
-        }
+    foreach ($s['products_used'] as $p) {
+        $product_usage_total += (float)$p['total_price'];
     }
 }
 
-
 /* =========================
-   EXTRA PRODUCTS (Appointment-based)
+   EXTRA PRODUCTS
 ========================= */
 $products = [];
-
 if ($appointment_id > 0) {
     $stmt = $conn->prepare("
         SELECT
@@ -131,20 +126,13 @@ if ($appointment_id > 0) {
 /* =========================
    TOTALS
 ========================= */
-$services_total = 0;
-foreach ($services as $s) {
-    $services_total += (float)$s['total_price']; // service only
-}
-
-$extra_products_total = 0;
-foreach ($products as $p) {
-    $extra_products_total += (float)$p['total_price'];
-}
+$services_total = array_sum(array_column($services, 'total_price'));
+$extra_products_total = array_sum(array_column($products, 'total_price'));
 
 $products_total = $product_usage_total + $extra_products_total;
-
 $subtotal = $services_total + $products_total;
-if ($include_vat === 1) {
+
+if ($include_vat) {
     $vat_amount = round(($subtotal * $vat_rate) / 100, 2);
     $grand_total = round($subtotal + $vat_amount, 2);
 } else {
@@ -152,21 +140,61 @@ if ($include_vat === 1) {
     $grand_total = round($subtotal, 2);
 }
 
+/* =========================
+   PAYMENTS (AUTHORITATIVE)
+========================= */
+$stmt = $conn->prepare("
+    SELECT
+        SUM(amount) AS total_paid,
+        MAX(receipt_number) AS last_reference,
+        MAX(payment_method) AS last_method
+    FROM payments
+    WHERE transaction_id = ?
+");
+$stmt->bind_param("i", $transaction_id);
+$stmt->execute();
+$pay = $stmt->get_result()->fetch_assoc();
+
+$total_paid = (float)($pay['total_paid'] ?? 0);
+$change_amount = max(0, $total_paid - $grand_total);
+
+/* =========================
+   PAYMENT STATUS
+========================= */
+if ($total_paid <= 0) {
+    $payment_status = "unpaid";
+} elseif ($total_paid + 0.01 < $grand_total) {
+    $payment_status = "partial";
+} else {
+    $payment_status = "paid";
+}
+
+/* =========================
+   ATTACH PAYMENT DATA
+========================= */
+$transaction['amount_paid'] = round($total_paid, 2);
+$transaction['change_amount'] = round($change_amount, 2);
+$transaction['payment_status'] = $payment_status;
+$transaction['reference_number'] = $pay['last_reference'] ?? null;
+$transaction['payment_method'] = $pay['last_method'] ?? null;
+
+/* =========================
+   RESPONSE
+========================= */
 echo json_encode([
     "success" => true,
     "transaction" => $transaction,
     "services" => $services,
     "products" => $products,
     "totals" => [
-        "services_total" => $services_total,
-        "consumables_total" => $product_usage_total,
-        "extra_products_total" => $extra_products_total,
-        "products_total" => $products_total,
-        "subtotal" => $subtotal,
+        "services_total" => round($services_total, 2),
+        "consumables_total" => round($product_usage_total, 2),
+        "extra_products_total" => round($extra_products_total, 2),
+        "products_total" => round($products_total, 2),
+        "subtotal" => round($subtotal, 2),
         "vat_rate" => $include_vat ? $vat_rate : 0,
-        "vat_amount" => $vat_amount,
-        "grand_total" => $grand_total,
+        "vat_amount" => round($vat_amount, 2),
+        "grand_total" => round($grand_total, 2),
         "include_vat" => $include_vat
     ]
-
 ]);

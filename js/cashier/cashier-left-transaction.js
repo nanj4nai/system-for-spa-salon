@@ -3,6 +3,7 @@
 // Reacts to appointment events
 // ================================
 let lockCountdownTimer = null;
+let lastLoadedTransactionId = null;
 // Listen when appointment is checked in
 document.addEventListener("appointment:checkedIn", (e) => {
     const { appointmentId, financial } = e.detail;
@@ -67,39 +68,27 @@ document.getElementById("cancelLockBtn").addEventListener("click", () => {
 });
 
 
-
 document.getElementById("confirmLockBtn")
-    .addEventListener("click", async () => {
+    .addEventListener("click", () => {
+
         CashierState.lockCountdownFinished = false;
 
         if (!CashierState.selectedPaymentMethod) {
             showToast("Please select a payment method", "error");
             return;
         }
-        const res = await fetch("../php/cashier/left/lock-transaction.php", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                transaction_id: CashierState.activeTransactionId,
-                payment_method: CashierState.selectedPaymentMethod
-            })
-        });
 
-        const d = await res.json();
-        if (!d.success) {
-            showToast(d.error || "Failed to lock transaction", "error");
-            return;
-        }
-
-        CashierState.transactionLocked = true; // 🔒 SINGLE SOURCE
+        // 🔒 SOFT LOCK ONLY (UI state)
+        CashierState.pendingPayment = true;
 
         document.getElementById("lockTransactionModal").classList.add("hidden");
 
-        lockTransactionEditing("Transaction locked — proceed to payment");
-        lockPaymentMethodUI(); // 👈 NEW
+        lockTransactionEditing("Proceeding to payment");
+        lockPaymentMethodUI();
+        lockPaymentUI();
+
         openPaymentModal();
     });
-
 
 
 // ================================
@@ -142,8 +131,39 @@ function loadTransaction(transactionId) {
                 showToast(d.error, "error");
                 return;
             }
+            // 🔥 EXIT "no shift / disabled" mode
+            unlockPOSContainer();
 
+            // 🔥 RESET UI FROM PREVIOUS TRANSACTION
+            resetTransactionUIState();
+
+            // 1️⃣ Render transaction data
+            renderClientInfo(d.transaction);
+            renderServiceList(d.services);
+            renderTransactionBreakdown(d);
+            renderPaymentBreakdown(d);
+
+            loadAppointmentServices?.();
+            loadExtraProducts?.();
+
+            // 🔒 APPLY CURRENT STATE
             applyTransactionLockState(d.transaction);
+            updateAddServiceButtonState();
+
+            // 🔥 THIS WAS MISSING
+            loadPaymentMethodSummary(transactionId);
+
+            // ✅ SHOW TOAST ONLY WHEN:
+            // - new transaction loaded
+            // - transaction is NOT locked
+            if (
+                d.transaction.transaction_id !== lastLoadedTransactionId &&
+                !CashierState.transactionLocked
+            ) {
+                showToast("Transaction ready — you may proceed", "success");
+            }
+
+            lastLoadedTransactionId = d.transaction.transaction_id;
 
             if (CashierState.transactionLocked && d.transaction.payment_method) {
                 CashierState.selectedPaymentMethod = d.transaction.payment_method;
@@ -151,21 +171,13 @@ function loadTransaction(transactionId) {
                 CashierState.selectedPaymentMethod = null;
             }
 
-            renderClientInfo(d.transaction);
-            renderServiceList(d.services);
-            renderPaymentBreakdown(d);
-
-            loadPaymentMethodSummary?.(d.transaction.transaction_id);
-
-            loadAppointmentServices?.();
-            loadExtraProducts?.();
-
             if (window.setActiveContext) {
-                setActiveContext(`Currently working on: ${d.transaction.full_name}`);
+                setActiveContext(
+                    `Currently working on: ${d.transaction.full_name}`
+                );
             }
         });
 }
-
 
 // ================================
 // UI HELPERS
@@ -193,7 +205,7 @@ function renderServiceList(services) {
     }
 
     list.innerHTML = services.map(s => `
-        <div class="p-3 bg-white dark:bg-gray-800 rounded-lg shadow flex justify-between">
+        <div class="service-card p-3 bg-white dark:bg-gray-800 rounded-lg shadow flex justify-between">
             <div>
                 <div class="font-medium">${s.service_name}</div>
                 <div class="text-xs text-gray-400">Qty: ${s.quantity}</div>
@@ -201,6 +213,14 @@ function renderServiceList(services) {
             <div class="font-semibold">₱${s.total_price}</div>
         </div>
     `).join("");
+
+    // 🔒 apply read-only style AFTER render
+    if (CashierState.transactionLocked) {
+        list.querySelectorAll(".service-card")
+            .forEach(card =>
+                card.classList.add("opacity-50", "pointer-events-none")
+            );
+    }
 }
 
 
@@ -263,8 +283,7 @@ function resetExtraProductsUI() {
         </div>`;
     }
 }
-
-function renderPaymentBreakdown(data) {
+function renderTransactionBreakdown(data) {
     const serviceBox = document.getElementById("serviceBreakdown");
     const productBox = document.getElementById("productBreakdown");
     const vatBtn = document.getElementById("toggleVatBtn");
@@ -273,7 +292,7 @@ function renderPaymentBreakdown(data) {
     productBox.innerHTML = "";
 
     // ======================
-    // SERVICES
+    // SERVICES + CONSUMABLES
     // ======================
     if (data.services?.length) {
         data.services.forEach(s => {
@@ -284,16 +303,24 @@ function renderPaymentBreakdown(data) {
                         <span>₱${Number(s.total_price).toFixed(2)}</span>
                     </div>
 
-                    ${s.products_used?.length ? `
+                    ${s.products_used?.length
+                    ? `
                         <div class="ml-3 mt-1 space-y-0.5 text-[11px] text-gray-500">
                             ${s.products_used.map(p => `
                                 <div class="flex justify-between">
-                                    <span>• ${p.name} (${p.quantity_used}${p.unit})</span>
-                                    <span>₱${Number(p.total_price).toFixed(2)}</span>
+                                    <span>
+                                        • ${p.name}
+                                        (${p.quantity_used}${p.unit})
+                                    </span>
+                                    <span>
+                                        ₱${Number(p.total_price).toFixed(2)}
+                                    </span>
                                 </div>
                             `).join("")}
                         </div>
-                    ` : ""}
+                        `
+                    : ""
+                }
                 </div>
             `;
         });
@@ -303,7 +330,7 @@ function renderPaymentBreakdown(data) {
     }
 
     // ======================
-    // EXTRA PRODUCTS
+    // EXTRA PRODUCTS (separate)
     // ======================
     if (data.products?.length) {
         data.products.forEach(p => {
@@ -319,6 +346,9 @@ function renderPaymentBreakdown(data) {
             `<div class="text-xs italic text-gray-400">No extra products</div>`;
     }
 
+    // ======================
+    // VAT toggle
+    // ======================
     if (vatBtn) {
         const enabled = data.totals.include_vat == 1;
         vatBtn.dataset.enabled = enabled ? "1" : "0";
@@ -349,6 +379,56 @@ function renderPaymentBreakdown(data) {
     document.getElementById("transactionTotal").textContent =
         `₱${Number(data.totals.grand_total).toFixed(2)}`;
 }
+
+
+
+function renderPaymentBreakdown(d) {
+
+    const txn = d.transaction;
+
+    const total = Number(d.totals?.grand_total || d.transaction.total_amount || 0);
+    const paid = Number(txn.amount_paid || 0);
+    const change = Number(txn.change_amount || 0);
+
+    const balance = Math.max(0, total - paid);
+
+    // Labels
+    document.getElementById("amountPaidLabel").textContent =
+        `₱${paid.toFixed(2)}`;
+
+    document.getElementById("balanceLabel").textContent =
+        `₱${balance.toFixed(2)}`;
+
+    document.getElementById("changeLabel").textContent =
+        `₱${change.toFixed(2)}`;
+
+    // Status
+    const statusLabel = document.getElementById("paymentStatusLabel");
+
+    statusLabel.textContent = txn.payment_status.toUpperCase();
+
+    statusLabel.className = "font-semibold";
+
+    if (txn.payment_status === "paid") {
+        statusLabel.classList.add("text-emerald-600");
+    } else if (txn.payment_status === "partial") {
+        statusLabel.classList.add("text-amber-500");
+    } else {
+        statusLabel.classList.add("text-gray-400");
+    }
+
+    // Reference
+    const refRow = document.getElementById("paymentReferenceRow");
+
+    if (txn.reference_number && txn.payment_method !== "cash") {
+        document.getElementById("paymentReferenceLabel").textContent =
+            txn.reference_number;
+        refRow.classList.remove("hidden");
+    } else {
+        refRow.classList.add("hidden");
+    }
+}
+
 
 function populateLockSummary(data) {
     // Client info
@@ -529,3 +609,16 @@ document.getElementById("toggleVatBtn").addEventListener("click", async () => {
     // reload totals
     loadTransaction(CashierState.activeTransactionId);
 });
+function refreshAppointmentsRealtime() {
+    // Preserve highlight
+    const activeId = CashierState.activeAppointmentId;
+
+    loadTodayAppointments();
+
+    // Re-apply highlight after render
+    setTimeout(() => {
+        if (activeId) {
+            highlightActiveAppointment(activeId);
+        }
+    }, 100);
+}

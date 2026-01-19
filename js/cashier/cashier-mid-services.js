@@ -10,6 +10,29 @@ let editingAppointmentServiceId = null;
 let pendingRemoveAppointmentServiceId = null;
 let pendingRemoveServiceName = "";
 
+function applyServiceLockUI(container) {
+
+    // 🔥 ALWAYS reset first
+    container.classList.remove("opacity-50");
+
+    container.querySelectorAll("button").forEach(btn => {
+        btn.disabled = false;
+        btn.classList.remove("opacity-50", "cursor-not-allowed");
+    });
+
+    // 🔒 Apply lock ONLY if locked
+    if (!CashierState.transactionLocked) return;
+
+    container.classList.add("opacity-50");
+
+    container.querySelectorAll("button").forEach(btn => {
+        btn.disabled = true;
+        btn.classList.add("opacity-50", "cursor-not-allowed");
+    });
+}
+
+
+
 function hasDuplicateService(serviceId, variantId, excludeAppointmentServiceId = null) {
     const cards = document.querySelectorAll(".service-card");
 
@@ -180,6 +203,9 @@ function loadAppointmentServices() {
                     `}
                 </div>
             `).join("");
+
+            // 🔒 APPLY LOCK VISUALS
+            applyServiceLockUI(container);
             updateExtraProductAvailability();
         });
 
@@ -305,7 +331,11 @@ confirmAddServiceBtn.addEventListener("click", () => {
             unlockAddService();
             loadAppointmentServices();
             updateExtraProductAvailability();
-            updateTransactionTotals();
+
+            if (CashierState.activeTransactionId) {
+                loadTransaction(CashierState.activeTransactionId); // 🔥 FIX
+            }
+
             setTimeout(() => {
                 highlightActiveService(highlightId);
             }, 100);
@@ -407,7 +437,10 @@ document.getElementById("confirmRemoveServiceBtn")
                 showToast("Service removed");
                 loadAppointmentServices();
                 updateExtraProductAvailability();
-                updateTransactionTotals();
+                if (CashierState.activeTransactionId) {
+                    loadTransaction(CashierState.activeTransactionId); // 🔥 FIX
+                }
+
             });
     });
 
@@ -639,4 +672,16 @@ function unlockAddService() {
     addServiceBtn.disabled = false;
     addServiceBtn.classList.remove("opacity-50", "cursor-not-allowed");
     delete addServiceBtn.dataset.lockReason;
+}
+
+function updateAddServiceButtonState() {
+    if (CashierState.transactionLocked) {
+        addServiceBtn.disabled = true;
+        addServiceBtn.classList.add("opacity-40", "cursor-not-allowed");
+        addServiceBtn.title = "Transaction is locked";
+    } else {
+        addServiceBtn.disabled = false;
+        addServiceBtn.classList.remove("opacity-40", "cursor-not-allowed");
+        addServiceBtn.title = "";
+    }
 }

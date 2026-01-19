@@ -187,10 +187,14 @@ function loadTodayAppointments() {
                     data-client-name="${a.client_name}"
                 >
 
-                    <div class="flex justify-between items-center">
-                        <div class="font-medium">${a.client_name}</div>
+                <div class="flex justify-between items-center gap-2">
+                    <div class="font-medium">${a.client_name}</div>
+
+                    <div class="flex gap-1 items-center">
+                        ${renderTransactionBadge(a)}
                         ${renderSourceBadge(a.source)}
                     </div>
+                </div>
 
                     <div class="text-xs text-gray-500 mt-0.5">
                         ${a.start_time}
@@ -253,6 +257,39 @@ function renderSourceBadge(source) {
     return `<span class="text-[10px] px-2 py-0.5 rounded bg-gray-100 text-gray-700">Walk-in</span>`;
 }
 
+function renderTransactionBadge(a) {
+    if (a.status !== "checked_in") return "";
+
+    if (a.is_receivable == 1) {
+        return `
+            <span class="text-[10px] px-2 py-0.5 rounded bg-purple-100 text-purple-700">
+                RECEIVABLE
+            </span>
+        `;
+    }
+
+    if (a.payment_status === "paid") {
+        return `
+            <span class="text-[10px] px-2 py-0.5 rounded bg-green-100 text-green-700">
+                PAID
+            </span>
+        `;
+    }
+
+    if (a.payment_status === "partial") {
+        return `
+            <span class="text-[10px] px-2 py-0.5 rounded bg-amber-100 text-amber-700">
+                PARTIAL
+            </span>
+        `;
+    }
+
+    return `
+        <span class="text-[10px] px-2 py-0.5 rounded bg-blue-100 text-blue-700">
+            OPEN
+        </span>
+    `;
+}
 
 /* =====================
    APPOINTMENT CLICK HANDLING

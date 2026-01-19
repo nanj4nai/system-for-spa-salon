@@ -458,3 +458,33 @@ DEFAULT 'editing';
 ALTER TABLE spa_transactions
 ADD include_vat TINYINT(1) DEFAULT 1;
 
+
+
+-- payment method update
+ALTER TABLE payments
+MODIFY payment_method ENUM(
+  'cash',
+  'gcash',
+  'card',
+  'other',
+  'receivable'
+) DEFAULT 'cash';
+-- add is_receivable flag
+ALTER TABLE spa_transactions
+ADD COLUMN is_receivable TINYINT(1) DEFAULT 0;
+-- approval fields for cashier shifts
+ALTER TABLE cashier_shifts
+ADD COLUMN approval_status ENUM(
+  'pending',
+  'approved',
+  'rejected'
+) DEFAULT 'approved',
+ADD COLUMN approved_by INT NULL,
+ADD COLUMN approved_at DATETIME NULL;
+-- modify status enum
+ALTER TABLE cashier_shifts
+MODIFY status ENUM(
+  'open',
+  'pending_close',
+  'closed'
+) DEFAULT 'open';

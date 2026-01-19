@@ -1,43 +1,57 @@
-// cashier-shift.js
 const overlay = document.getElementById('noShiftOverlay');
 const pos = document.getElementById('posContainer');
 const badge = document.getElementById('shiftBadge');
 const closeBtn = document.getElementById('closeShiftBtn');
 const openBtn = document.getElementById('openShiftBtn');
 
-function updateUI(open) {
-    document.body.classList.toggle('overflow-hidden', !open);
+function setState(state) {
 
-    if (open) {
+    if (state === "open") {
         overlay.classList.add('hidden');
         pos.classList.remove('opacity-50', 'pointer-events-none');
 
         badge.textContent = 'SHIFT OPEN';
-        badge.className = `
-            text-xs px-3 py-1 rounded-full font-medium
-            bg-green-100 text-green-700
-        `;
+        badge.className = 'bg-green-100 text-green-700 px-3 py-1 rounded-full';
 
         closeBtn.classList.remove('hidden');
+        openBtn.classList.add('hidden');
 
+        // 👈 IMPORTANT
         if (typeof loadTodayAppointments === 'function') {
             loadTodayAppointments();
         }
-    } else {
+    }
+
+    else if (state === "pending_close") {
+        // 🔒 Block actions but allow viewing
+        overlay.classList.add('hidden');
+        pos.classList.add('opacity-50', 'pointer-events-none');
+
+        badge.textContent = 'SHIFT PENDING APPROVAL';
+        badge.className = 'bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full';
+
+        closeBtn.classList.add('hidden');
+        openBtn.classList.add('hidden');
+
+        // 👈 STILL LOAD APPOINTMENTS
+        if (typeof loadTodayAppointments === 'function') {
+            loadTodayAppointments();
+        }
+    }
+
+    else {
         overlay.classList.remove('hidden');
         pos.classList.add('opacity-50', 'pointer-events-none');
 
         badge.textContent = 'NO SHIFT';
-        badge.className = `
-            text-xs px-3 py-1 rounded-full font-medium
-            bg-red-100 text-red-700
-        `;
+        badge.className = 'bg-red-100 text-red-700 px-3 py-1 rounded-full';
 
+        openBtn.classList.remove('hidden');
         closeBtn.classList.add('hidden');
     }
 }
 
-// CHECK SHIFT STATUS ON LOAD
+// STATUS CHECK
 fetch('../php/cashier/cashier-shift.php', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -45,9 +59,9 @@ fetch('../php/cashier/cashier-shift.php', {
 })
     .then(r => r.json())
     .then(d => {
-        if (d.success) updateUI(d.open);
-    })
-    .catch(() => console.error('Failed to check shift status'));
+        if (!d.success) return;
+        setState(d.status);
+    });
 
 // OPEN SHIFT
 openBtn?.addEventListener('click', () => {
@@ -60,12 +74,12 @@ openBtn?.addEventListener('click', () => {
     })
         .then(r => r.json())
         .then(d => {
-            if (d.success) updateUI(true);
+            if (d.success) setState("open");
             else alert(d.error);
         });
 });
 
-// CLOSE SHIFT
+// REQUEST CLOSE SHIFT
 closeBtn?.addEventListener('click', () => {
     const cash = prompt("Enter closing cash:");
     if (cash === null) return;
@@ -73,11 +87,15 @@ closeBtn?.addEventListener('click', () => {
     fetch('../php/cashier/cashier-shift.php', {
         method: 'POST',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: `action=close&closing_cash=${cash}`
+        body: `action=request_close&closing_cash=${cash}`
     })
         .then(r => r.json())
         .then(d => {
-            if (d.success) updateUI(false);
-            else alert(d.error);
+            if (d.success) {
+                alert("Shift submitted for admin approval");
+                setState("pending_close");
+            } else {
+                alert(d.error);
+            }
         });
 });

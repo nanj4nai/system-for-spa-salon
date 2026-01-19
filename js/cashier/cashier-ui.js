@@ -13,6 +13,45 @@ window.showToast = function (message, type = 'success') {
 
     setTimeout(() => toast.classList.add('hidden'), 2500);
 };
+function resetTransactionUIState() {
+    // Reset buttons
+    ["addServiceBtn", "addExtraProductBtn"].forEach(id => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.disabled = false;
+        el.classList.remove("opacity-50", "opacity-40", "cursor-not-allowed");
+    });
+
+    // Reset service cards
+    document.querySelectorAll(".service-card").forEach(card => {
+        card.classList.remove("card-locked", "pointer-events-none");
+    });
+
+
+    // Reset extra product buttons
+    document
+        .querySelectorAll("#extraProductList button")
+        .forEach(btn => {
+            btn.disabled = false;
+            btn.classList.remove("opacity-40", "pointer-events-none");
+        });
+
+    // Reset payment method buttons
+    document
+        .querySelectorAll(".payment-method-btn")
+        .forEach(btn => {
+            btn.disabled = false;
+            btn.classList.remove("opacity-50", "cursor-not-allowed");
+        });
+
+    // Reset pay button
+    const payBtn = document.getElementById("payBtn");
+    if (payBtn) {
+        payBtn.disabled = false;
+        payBtn.classList.remove("opacity-50");
+    }
+}
+
 
 // ================================
 // CENTER LOCKING
@@ -32,11 +71,6 @@ function lockCenterUI(reason = "Transaction locked") {
         addExtraBtn.classList.add("opacity-50", "cursor-not-allowed");
     }
 
-    // Lock existing service cards
-    document.querySelectorAll(".service-card").forEach(card => {
-        card.classList.add("opacity-50", "pointer-events-none");
-    });
-
     showToast(reason);
 }
 
@@ -55,7 +89,7 @@ function unlockCenterUI() {
     }
 
     document.querySelectorAll(".service-card").forEach(card => {
-        card.classList.remove("opacity-50", "pointer-events-none");
+        card.classList.remove("card-locked", "pointer-events-none");
     });
 }
 
@@ -93,31 +127,56 @@ function lockTransactionEditing(reason = "Transaction locked") {
         );
 
     showToast(reason, "info");
-}
+} function applyTransactionLockState(transaction) {
 
-function applyTransactionLockState(transaction) {
-    const isLocked =
+    // 🔒 HARD LOCK (final, from DB)
+    const isHardLocked =
         transaction.status === "locked" ||
         transaction.payment_status === "paid";
 
-    CashierState.transactionLocked = isLocked;
+    // 🟡 SOFT LOCK (during payment flow only)
+    const isSoftLocked = CashierState.pendingPayment === true;
 
-    if (isLocked) {
-        // 🔒 hard lock everything
+    // Only HARD lock affects this flag
+    CashierState.transactionLocked = isHardLocked;
+
+    if (isHardLocked || isSoftLocked) {
+
+        // 🔒 lock editing + payment UI
         lockTransactionEditing();
         lockPaymentMethodUI();
         lockPaymentUI();
 
-        // prevent modals from staying open
-        closeAllServiceModals();
-        closePaymentModal();
+        // 🔒 disable extra product actions
+        document
+            .querySelectorAll("#extraProductList button")
+            .forEach(btn => {
+                btn.disabled = true;
+                btn.classList.add("opacity-40", "pointer-events-none");
+            });
+
+        // ❗ Only close modals on HARD lock
+        if (isHardLocked) {
+            closeAllServiceModals();
+            closePaymentModal();
+        }
+
     } else {
-        // 🔓 editable
+
+        // 🔓 fully editable
         unlockTransactionEditing();
         unlockPaymentMethodUI();
         unlockPaymentUI();
+
+        document
+            .querySelectorAll("#extraProductList button")
+            .forEach(btn => {
+                btn.disabled = false;
+                btn.classList.remove("opacity-40", "pointer-events-none");
+            });
     }
 }
+
 
 function lockPaymentMethodUI() {
     document
@@ -167,6 +226,16 @@ function unlockTransactionEditing() {
             btn.classList.remove("pointer-events-none", "opacity-40")
         );
 }
+function togglePaymentExtraFields() {
+    const method = CashierState.selectedPaymentMethod || "cash";
+    const onlineBox = document.getElementById("onlinePaymentFields");
+
+    if (method === "cash") {
+        onlineBox.classList.add("hidden");
+    } else {
+        onlineBox.classList.remove("hidden");
+    }
+}
 
 function closePaymentModal() {
     const modal = document.getElementById("paymentModal");
@@ -174,4 +243,16 @@ function closePaymentModal() {
 
     modal.classList.add("hidden");
     modal.classList.remove("flex");
+}
+
+function lockPOSContainer() {
+    const pos = document.getElementById("posContainer");
+    if (!pos) return;
+    pos.classList.add("opacity-50", "pointer-events-none");
+}
+
+function unlockPOSContainer() {
+    const pos = document.getElementById("posContainer");
+    if (!pos) return;
+    pos.classList.remove("opacity-50", "pointer-events-none");
 }

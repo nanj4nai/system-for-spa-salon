@@ -2,6 +2,29 @@ let editingExtraProductId = null;
 let pendingRemoveExtraProductId = null;
 let pendingRemoveExtraProductName = "";
 
+function applyExtraProductLockUI(container) {
+
+    // 🔥 ALWAYS reset first
+    container.classList.remove("opacity-50");
+
+    container.querySelectorAll("button").forEach(btn => {
+        btn.disabled = false;
+        btn.classList.remove("opacity-50", "cursor-not-allowed");
+    });
+
+    // 🔒 Apply lock ONLY if locked
+    if (!CashierState.transactionLocked) return;
+
+    container.classList.add("opacity-50");
+
+    container.querySelectorAll("button").forEach(btn => {
+        btn.disabled = true;
+        btn.classList.add("opacity-50", "cursor-not-allowed");
+    });
+}
+
+
+
 function loadServiceProducts(serviceId) {
     const box = document.getElementById("serviceProductsPreview");
     box.innerHTML = "";
@@ -116,6 +139,10 @@ function loadAllProducts() {
 
 
 function removeExtraProduct(id) {
+    if (CashierState.transactionLocked) {
+        showToast("Transaction is locked", "error");
+        return;
+    }
     pendingRemoveExtraProductId = id;
 
     const card = document.querySelector(
@@ -172,7 +199,9 @@ document.getElementById("confirmRemoveExtraProductBtn")
 
                 showToast("Product removed");
                 loadExtraProducts();
-                updateTransactionTotals();
+                if (CashierState.activeTransactionId) {
+                    loadTransaction(CashierState.activeTransactionId);
+                }
             });
     });
 
@@ -207,7 +236,8 @@ function loadExtraProducts() {
                     </div>
                 </div>
             `).join("");
-
+            // 🔒 APPLY LOCK UI
+            applyExtraProductLockUI(box);
         });
 }
 
@@ -271,7 +301,9 @@ document.getElementById("confirmExtraProductBtn").addEventListener("click", () =
             showToast("Product added");
             resetExtraProductModal();
             loadExtraProducts();
-            updateTransactionTotals();
+            if (CashierState.activeTransactionId) {
+                loadTransaction(CashierState.activeTransactionId);
+            }
         });
 });
 
@@ -364,22 +396,29 @@ function updateExtraProductAvailability() {
     const hint = document.getElementById("extraProductHint");
 
     if (!btn) return;
-    if (!hasAtLeastOneService()) {
-        hint?.classList.remove("hidden");
-    } else {
+
+    if (CashierState.transactionLocked) {
+        btn.disabled = true;
+        btn.classList.add("opacity-40", "cursor-not-allowed");
+        btn.title = "Transaction is locked";
         hint?.classList.add("hidden");
+        return;
     }
 
+    // existing logic
     if (!hasAtLeastOneService()) {
         btn.disabled = true;
         btn.classList.add("opacity-50", "cursor-not-allowed");
-        btn.title = "Add a service first before adding extra products";
+        btn.title = "Add a service first";
+        hint?.classList.remove("hidden");
     } else {
         btn.disabled = false;
         btn.classList.remove("opacity-50", "cursor-not-allowed");
         btn.title = "";
+        hint?.classList.add("hidden");
     }
 }
+
 
 async function updateTransactionTotals() {
     if (!CashierState.activeTransactionId) return;

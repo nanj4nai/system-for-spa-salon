@@ -37,7 +37,13 @@ $username     = $_SESSION['username'] ?? 'Cashier';
             }
         }
     </script>
-
+    <style>
+        .card-locked {
+            opacity: 0.55;
+            filter: grayscale(20%);
+            pointer-events: none;
+        }
+    </style>
 </head>
 
 <body class="h-full font-sans bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100">
@@ -71,195 +77,236 @@ $username     = $_SESSION['username'] ?? 'Cashier';
     <?php include 'cashier-navbar.php'; ?>
 
     <!-- ================= MAIN POS ================= -->
-    <div id="posContainer"
-        class="flex h-[calc(100vh-3.5rem)] gap-4 p-4 opacity-50 pointer-events-none">
 
+    <div class="flex h-[calc(100vh-3.5rem)] gap-4 p-4">
         <!-- ===== LEFT ===== -->
+
         <?php include 'cashier-left-appointments.php'; ?>
+        <div id="posContainer"
+            class="flex flex-1 gap-4 transition-all">
 
-        <!-- ===== CENTER ===== -->
-        <main class="flex-1 bg-white dark:bg-gray-800 rounded-xl p-6 overflow-y-auto shadow-sm">
-            <h2 class="text-lg font-semibold mb-1">Service & Treatment Details</h2>
-            <p class="text-xs text-gray-400 mb-4">
-                Add services and assign staff for this client
-            </p>
+            <!-- ===== CENTER ===== -->
+            <main class="flex-1 bg-white dark:bg-gray-800 rounded-xl p-6 overflow-y-auto shadow-sm">
+                <h2 class="text-lg font-semibold mb-1">Service & Treatment Details</h2>
+                <p class="text-xs text-gray-400 mb-4">
+                    Add services and assign staff for this client
+                </p>
 
-            <div class="panel-tip hidden text-xs mb-4
+                <div class="panel-tip hidden text-xs mb-4
                 bg-blue-50 dark:bg-gray-700
                 text-blue-700 dark:text-blue-300
                 p-3 rounded-lg flex items-start gap-2">
 
-                <i data-lucide="clipboard-list" class="w-4 h-4 mt-0.5"></i>
-                <span>
-                    2. Add services and assign staff for the selected client.
-                </span>
-            </div>
+                    <i data-lucide="clipboard-list" class="w-4 h-4 mt-0.5"></i>
+                    <span>
+                        2. Add services and assign staff for the selected client.
+                    </span>
+                </div>
 
-            <div id="activeContext"
-                class="mb-3 text-xs px-3 py-2 rounded-lg
+                <div id="activeContext"
+                    class="mb-3 text-xs px-3 py-2 rounded-lg
             bg-blue-100 text-blue-700
             dark:bg-blue-900/40 dark:text-blue-300 hidden">
-            </div>
-            <button
-                id="addServiceBtn"
-                disabled
-                class="mt-4 text-sm bg-blue-500 text-white px-4 py-2 rounded opacity-50">
-                + Add Service
-            </button>
-            <div id="clientInfo"
-                class="mb-4 p-4 bg-white dark:bg-gray-800 rounded-xl shadow text-sm text-gray-500">
-                Select an appointment to begin
-            </div>
-
-            <div id="serviceList" class="space-y-3"></div>
-
-            <!-- EXTRA PRODUCTS -->
-            <div class="mt-6">
-                <div class="flex items-center justify-between mb-2">
-                    <h3 class="text-sm font-semibold">Extra Products</h3>
-                    <button
-                        id="addExtraProductBtn"
-                        class="text-xs bg-emerald-500 text-white px-3 py-1 rounded">
-                        + Add Product
-                    </button>
+                </div>
+                <button
+                    id="addServiceBtn"
+                    disabled
+                    class="mt-4 text-sm bg-blue-500 text-white px-4 py-2 rounded opacity-50">
+                    + Add Service
+                </button>
+                <div id="clientInfo"
+                    class="mb-4 p-4 bg-white dark:bg-gray-800 rounded-xl shadow text-sm text-gray-500">
+                    Select an appointment to begin
                 </div>
 
-                <div id="extraProductList" class="space-y-2 text-sm text-gray-600">
-                    <div class="text-xs italic text-gray-400">
-                        No extra products added
-                    </div>
-                </div>
-            </div>
-
-
-        </main>
-
-        <!-- ===== RIGHT ===== -->
-        <aside
-            class="w-80 bg-white dark:bg-gray-800 rounded-xl
-           border border-gray-200 dark:border-gray-700
-           p-4 shadow-sm flex flex-col">
-
-            <!-- HEADER -->
-            <div class="mb-4">
-                <h2 class="font-semibold">Transaction & Payment</h2>
-                <p class="text-xs text-gray-400">
-                    Review totals and complete payment
-                </p>
-            </div>
-
-            <!-- BREAKDOWN -->
-            <div id="paymentBreakdown" class="flex-1 space-y-4 text-sm overflow-y-auto">
-
-                <!-- SERVICES -->
-                <div>
-                    <div class="text-xs font-semibold uppercase text-gray-400 mb-1">
-                        Services
-                    </div>
-                    <div
-                        id="serviceBreakdown"
-                        class="space-y-1 rounded-lg border
-                       border-gray-200 dark:border-gray-700
-                       p-2 bg-gray-50 dark:bg-gray-900">
-                    </div>
-                </div>
+                <div id="serviceList" class="space-y-3"></div>
 
                 <!-- EXTRA PRODUCTS -->
-                <div>
-                    <div class="text-xs font-semibold uppercase text-gray-400 mb-1">
-                        Extra Products
-                    </div>
-                    <div
-                        id="productBreakdown"
-                        class="space-y-1 rounded-lg border
-                       border-gray-200 dark:border-gray-700
-                       p-2 bg-gray-50 dark:bg-gray-900">
-                    </div>
-                </div>
-
-                <!-- SUMMARY CARD -->
-                <div
-                    class="rounded-xl border border-gray-200 dark:border-gray-700
-                   p-3 space-y-2 bg-white dark:bg-gray-800">
-
-                    <!-- LINE ITEMS -->
-                    <div class="flex justify-between text-xs">
-                        <span>Services</span>
-                        <span id="servicesTotal">₱0.00</span>
-                    </div>
-
-                    <div class="flex justify-between text-xs">
-                        <span>Consumables</span>
-                        <span id="consumablesTotal">₱0.00</span>
-                    </div>
-
-                    <div class="flex justify-between text-xs">
-                        <span>Extra Products</span>
-                        <span id="extraProductsTotal">₱0.00</span>
-                    </div>
-
-                    <div class="border-t border-gray-200 dark:border-gray-700 pt-2"></div>
-
-                    <!-- VAT -->
-                    <div class="flex items-center justify-between text-xs">
-                        <span>Include VAT</span>
+                <div class="mt-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <h3 class="text-sm font-semibold">Extra Products</h3>
                         <button
-                            id="toggleVatBtn"
-                            class="px-2 py-1 rounded-md border text-[11px]
-                           border-gray-300 dark:border-gray-600">
-                            ON
+                            id="addExtraProductBtn"
+                            class="text-xs bg-emerald-500 text-white px-3 py-1 rounded">
+                            + Add Product
                         </button>
                     </div>
 
-                    <div class="flex justify-between text-xs">
-                        <span>VAT (<span id="vatRateLabel">0</span>%)</span>
-                        <span id="vatAmount">₱0.00</span>
+                    <div id="extraProductList" class="space-y-2 text-sm text-gray-600">
+                        <div class="text-xs italic text-gray-400">
+                            No extra products added
+                        </div>
+                    </div>
+                </div>
+
+
+            </main>
+
+            <!-- ===== RIGHT ===== -->
+            <aside class="w-80 bg-white dark:bg-gray-800 rounded-xl p-4 shadow-sm flex flex-col">
+
+                <!-- HEADER -->
+                <div class="mb-4">
+                    <h2 class="font-semibold">Transaction & Payment</h2>
+                    <p class="text-xs text-gray-400">
+                        Review totals and complete payment
+                    </p>
+                </div>
+
+                <!-- BREAKDOWN -->
+                <div id="paymentBreakdown" class="flex-1 space-y-4 text-sm overflow-y-auto">
+
+                    <!-- SERVICES -->
+                    <div>
+                        <div class="text-xs font-semibold uppercase text-gray-400 mb-1">
+                            Services
+                        </div>
+                        <div
+                            id="serviceBreakdown"
+                            class="space-y-1 rounded-lg border
+                       border-gray-200 dark:border-gray-700
+                       p-2 bg-gray-50 dark:bg-gray-900">
+                        </div>
                     </div>
 
-                    <div class="border-t border-gray-200 dark:border-gray-700 pt-2"></div>
-
-                    <!-- SUBTOTAL -->
-                    <div class="flex justify-between font-medium">
-                        <span>Subtotal</span>
-                        <span id="subtotalAmount">₱0.00</span>
+                    <!-- EXTRA PRODUCTS -->
+                    <div>
+                        <div class="text-xs font-semibold uppercase text-gray-400 mb-1">
+                            Extra Products
+                        </div>
+                        <div
+                            id="productBreakdown"
+                            class="space-y-1 rounded-lg border
+                       border-gray-200 dark:border-gray-700
+                       p-2 bg-gray-50 dark:bg-gray-900">
+                        </div>
                     </div>
 
-                    <!-- PAYMENT METHOD (PROMINENT) -->
+                    <!-- SUMMARY CARD -->
                     <div
-                        id="lockPaymentMethodSummary"
-                        class="mt-2 pt-2 border-t
+                        class="rounded-xl border border-gray-200 dark:border-gray-700
+                   p-3 space-y-2 bg-white dark:bg-gray-800">
+
+                        <!-- LINE ITEMS -->
+                        <div class="flex justify-between text-xs">
+                            <span>Services</span>
+                            <span id="servicesTotal">₱0.00</span>
+                        </div>
+
+                        <div class="flex justify-between text-xs">
+                            <span>Consumables</span>
+                            <span id="consumablesTotal">₱0.00</span>
+                        </div>
+
+                        <div class="flex justify-between text-xs">
+                            <span>Extra Products</span>
+                            <span id="extraProductsTotal">₱0.00</span>
+                        </div>
+
+                        <div class="border-t border-gray-200 dark:border-gray-700 pt-2"></div>
+
+                        <!-- VAT -->
+                        <div class="flex items-center justify-between text-xs">
+                            <span>Include VAT</span>
+                            <button
+                                id="toggleVatBtn"
+                                class="px-2 py-1 rounded-md border text-[11px]
+                           border-gray-300 dark:border-gray-600">
+                                ON
+                            </button>
+                        </div>
+
+                        <div class="flex justify-between text-xs">
+                            <span>VAT (<span id="vatRateLabel">0</span>%)</span>
+                            <span id="vatAmount">₱0.00</span>
+                        </div>
+
+                        <div class="border-t border-gray-200 dark:border-gray-700 pt-2"></div>
+
+                        <!-- SUBTOTAL -->
+                        <div class="flex justify-between font-medium">
+                            <span>Subtotal</span>
+                            <span id="subtotalAmount">₱0.00</span>
+                        </div>
+
+                        <!-- PAYMENT METHOD (PROMINENT) -->
+                        <div
+                            id="lockPaymentMethodSummary"
+                            class="mt-2 pt-2 border-t
                        border-gray-200 dark:border-gray-700
                        flex items-start justify-between gap-3">
 
-                        <span class="text-xs text-gray-500">
-                            Payment Method
-                        </span>
+                            <span class="text-xs text-gray-500">
+                                Payment Method
+                            </span>
 
-                        <!-- JS injects here -->
-                        <span class="text-gray-400 italic text-xs">
-                            Loading…
-                        </span>
-                    </div>
+                            <!-- JS injects here -->
+                            <span class="text-gray-400 italic text-xs">
+                                Loading…
+                            </span>
+                        </div>
+                        <!-- PAYMENT STATUS -->
+                        <div
+                            id="paymentStatusBox"
+                            class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700
+           space-y-1 text-xs">
 
-                    <!-- TOTAL -->
-                    <div
-                        class="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Payment Status</span>
+                                <span
+                                    id="paymentStatusLabel"
+                                    class="font-semibold text-gray-400">
+                                    UNPAID
+                                </span>
+                            </div>
+
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Amount Paid</span>
+                                <span id="amountPaidLabel">₱0.00</span>
+                            </div>
+
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Balance</span>
+                                <span id="balanceLabel">₱0.00</span>
+                            </div>
+
+                            <div class="flex justify-between">
+                                <span class="text-gray-500">Change</span>
+                                <span id="changeLabel">₱0.00</span>
+                            </div>
+
+                            <div
+                                id="paymentReferenceRow"
+                                class="flex justify-between hidden">
+                                <span class="text-gray-500">Reference</span>
+                                <span
+                                    id="paymentReferenceLabel"
+                                    class="font-mono text-[11px]">
+                                    —
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- TOTAL -->
+                        <div
+                            class="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600
                        flex justify-between text-lg font-semibold text-emerald-600">
-                        <span>Total</span>
-                        <span id="transactionTotal">₱0.00</span>
+                            <span>Total</span>
+                            <span id="transactionTotal">₱0.00</span>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- ACTION -->
-            <button
-                id="payBtn"
-                disabled
-                class="mt-4 w-full bg-emerald-600 hover:bg-emerald-700
+                <!-- ACTION -->
+                <button
+                    id="payBtn"
+                    disabled
+                    class="mt-4 w-full bg-emerald-600 hover:bg-emerald-700
                text-white py-3 rounded-xl font-semibold opacity-50">
-                Proceed to Payment
-            </button>
-        </aside>
+                    Proceed to Payment
+                </button>
+            </aside>
+        </div>
     </div>
 
     <!-- MODALS & TOASTS -->
@@ -588,6 +635,36 @@ $username     = $_SESSION['username'] ?? 'Cashier';
             <p class="text-xs text-gray-500 mb-4">
                 Enter amount received from client
             </p>
+            <!-- ONLINE PAYMENT DETAILS (HIDDEN BY DEFAULT) -->
+            <div id="onlinePaymentFields" class="hidden mb-3">
+
+                <label class="text-xs text-gray-500">
+                    Reference / Card Number
+                </label>
+                <input
+                    id="paymentReferenceInput"
+                    type="text"
+                    class="w-full mt-1 px-3 py-2 rounded-lg border
+               border-gray-300 dark:border-gray-600
+               dark:bg-gray-700"
+                    placeholder="Reference no. / Last 4 digits">
+
+            </div>
+
+            <!-- REMARKS -->
+            <div class="mb-3">
+                <label class="text-xs text-gray-500">
+                    Remarks (optional)
+                </label>
+                <textarea
+                    id="paymentRemarksInput"
+                    rows="2"
+                    class="w-full mt-1 px-3 py-2 rounded-lg border
+               border-gray-300 dark:border-gray-600
+               dark:bg-gray-700"
+                    placeholder="Notes from cashier..."></textarea>
+            </div>
+
 
             <!-- TOTAL -->
             <div class="mb-3 text-sm">
@@ -601,7 +678,7 @@ $username     = $_SESSION['username'] ?? 'Cashier';
 
             <!-- CASH INPUT -->
             <div class="mb-3">
-                <label class="text-xs text-gray-500">
+                <label for="cashReceivedInput" class="text-xs text-gray-500">
                     Amount Received
                 </label>
                 <input
@@ -618,12 +695,13 @@ $username     = $_SESSION['username'] ?? 'Cashier';
             <!-- CHANGE -->
             <div class="text-sm mb-4">
                 <div class="flex justify-between">
-                    <span>Change</span>
-                    <span id="changeAmount" class="font-medium">
+                    <span id="paymentCalcLabel">Change</span>
+                    <span id="paymentCalcValue" class="font-medium">
                         ₱0.00
                     </span>
                 </div>
             </div>
+
 
             <!-- ACTIONS -->
             <div class="flex justify-end gap-2">

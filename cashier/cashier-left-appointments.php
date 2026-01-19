@@ -36,5 +36,7 @@
     </button>
 
     <!-- Appointments -->
-    <div id="appointmentsList" class="space-y-3"></div>
+    <div id="appointmentsContainer">
+        <div id="appointmentsList" class="space-y-3"></div>
+    </div>
 </aside>
