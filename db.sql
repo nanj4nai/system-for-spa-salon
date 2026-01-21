@@ -341,20 +341,55 @@ MODIFY quantity DECIMAL(10,2) NOT NULL;
 -- updatess 
 CREATE TABLE cashier_shifts (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT NOT NULL,          -- cashier (users table)
+
+    -- cashier user
+    user_id INT NOT NULL,
+
+    -- shift timing
     opened_at DATETIME NOT NULL,
     closed_at DATETIME NULL,
 
+    -- cash tracking
     opening_cash DECIMAL(10,2) DEFAULT 0.00,
     closing_cash DECIMAL(10,2) DEFAULT 0.00,
 
-    status ENUM('open','closed') DEFAULT 'open',
+    -- shift lifecycle
+    status ENUM(
+        'open',
+        'pending_close',
+        'closed'
+    ) DEFAULT 'open',
+
+    -- approval workflow
+    approval_status ENUM(
+        'pending',
+        'approved',
+        'rejected'
+    ) DEFAULT 'approved',
+
+    approved_by INT NULL,
+    approved_at DATETIME NULL,
 
     remarks TEXT,
 
-    FOREIGN KEY (user_id)
-        REFERENCES users(id)
+    -- GENERATED: only one active shift per cashier
+    is_active TINYINT
+        GENERATED ALWAYS AS (
+            status IN ('open', 'pending_close')
+        ) STORED,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    -- relations
+    CONSTRAINT fk_cashier_shift_user
+        FOREIGN KEY (user_id)
+        REFERENCES users(id),
+
+    -- enforce single active shift per cashier
+    UNIQUE KEY uniq_one_active_shift_per_user (user_id, is_active)
 );
+
+
 
 -- Link Transactions to Shift
 ALTER TABLE spa_transactions
@@ -369,11 +404,6 @@ ADD COLUMN appointment_id INT NULL,
 ADD FOREIGN KEY (appointment_id)
     REFERENCES appointments(id)
     ON DELETE SET NULL;
-
--- Ensure only one open shift per user
-ALTER TABLE cashier_shifts
-ADD COLUMN is_open TINYINT GENERATED ALWAYS AS (status = 'open') STORED,
-ADD UNIQUE KEY uniq_one_open_shift (is_open);
 
 
 
@@ -488,3 +518,43 @@ MODIFY status ENUM(
   'pending_close',
   'closed'
 ) DEFAULT 'open';
+
+--
+ALTER TABLE appointments
+ADD COLUMN payment_reference VARCHAR(100) NULL,
+ADD COLUMN payment_proof VARCHAR(255) NULL,
+ADD COLUMN payment_verified TINYINT DEFAULT 0,
+ADD COLUMN payment_verified_by INT NULL,
+ADD COLUMN payment_verified_at DATETIME NULL;
+--
+ALTER TABLE spa_transactions
+ADD balance_due DECIMAL(10,2) NOT NULL DEFAULT 0;
+--
+ALTER TABLE spa_transactions
+ADD has_receivable TINYINT(1) NOT NULL DEFAULT 0;
+
+
+--
+CREATE TABLE accounts_receivable (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    client_id INT NOT NULL,
+    transaction_id INT NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    balance DECIMAL(10,2) NOT NULL,
+    status ENUM('open','paid') DEFAULT 'open',
+    remarks TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (client_id) REFERENCES clients(id),
+    FOREIGN KEY (transaction_id) REFERENCES spa_transactions(id)
+);
+--
+CREATE TABLE ar_payments (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    receivable_id INT NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    payment_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+    remarks TEXT,
+
+    FOREIGN KEY (receivable_id) REFERENCES accounts_receivable(id)
+);

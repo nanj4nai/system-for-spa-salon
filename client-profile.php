@@ -154,7 +154,13 @@ $role = $_SESSION["role"];
         <!-- VISIT HISTORY -->
         <div class="mt-6 bg-white dark:bg-gray-800 rounded-xl shadow border dark:border-gray-700">
             <div class="p-4 border-b dark:border-gray-700">
-                <h3 class="text-lg font-semibold">Visit History</h3>
+                <h3 class="text-lg font-semibold">
+                    Visit History
+                    <span class="text-xs text-gray-400 ml-2">
+                        (click a visit for details)
+                    </span>
+                </h3>
+
             </div>
             <table class="min-w-full text-sm">
                 <thead class="bg-gray-100 dark:bg-gray-700">
@@ -170,6 +176,125 @@ $role = $_SESSION["role"];
         </div>
 
     </main>
+    <!-- CLIENT TRANSACTION MODAL -->
+    <div id="clientTxModal"
+        class="fixed inset-0 z-50 hidden bg-black/50 backdrop-blur-sm flex items-center justify-center px-4">
+
+        <div
+            class="bg-white dark:bg-gray-900 w-full max-w-5xl rounded-2xl md:rounded-2xl h-full md:h-auto overflow-y-auto">
+
+            <!-- HEADER -->
+            <div class="flex items-center justify-between px-6 py-4 border-b dark:border-gray-700">
+                <div>
+                    <h2 class="text-xl font-semibold">Transaction Details</h2>
+                    <p class="text-sm text-gray-500">
+                        Reference <span id="ctxNumber" class="font-mono"></span>
+                    </p>
+                </div>
+
+                <button onclick="closeClientTransactionModal()"
+                    class="text-gray-400 hover:text-red-500 transition text-xl">
+                    ✕
+                </button>
+            </div>
+
+            <!-- CONTENT -->
+            <div class="p-6 space-y-6">
+
+                <!-- SUMMARY CARDS -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                    <div class="rounded-xl bg-gray-50 dark:bg-gray-800 p-4">
+                        <p class="text-gray-500 text-xs">Status</p>
+                        <p id="ctxStatus" class="font-semibold capitalize"></p>
+                    </div>
+                    <div class="rounded-xl bg-gray-50 dark:bg-gray-800 p-4">
+                        <p class="text-gray-500 text-xs">Total</p>
+                        <p id="ctxTotal" class="font-semibold"></p>
+                    </div>
+                    <div class="rounded-xl bg-gray-50 dark:bg-gray-800 p-4">
+                        <p class="text-gray-500 text-xs">Balance</p>
+                        <p id="ctxBalance" class="font-semibold"></p>
+                    </div>
+                    <div class="rounded-xl bg-gray-50 dark:bg-gray-800 p-4">
+                        <p class="text-gray-500 text-xs">Type</p>
+                        <p class="font-semibold">Client Transaction</p>
+                    </div>
+                </div>
+
+                <!-- SERVICES -->
+                <div>
+                    <h3 class="text-sm font-semibold mb-2 text-gray-600 dark:text-gray-300">
+                        Services
+                    </h3>
+                    <div class="rounded-xl border dark:border-gray-700 overflow-hidden">
+                        <table class="w-full text-sm">
+                            <tbody id="ctxServices"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- PRODUCTS -->
+                <div>
+                    <h3 class="text-sm font-semibold mb-2 text-gray-600 dark:text-gray-300">
+                        Products
+                    </h3>
+                    <div class="rounded-xl border dark:border-gray-700 overflow-hidden">
+                        <table class="w-full text-sm">
+                            <tbody id="ctxProducts"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- PAYMENTS -->
+                <div>
+                    <h3 class="text-sm font-semibold mb-2 text-gray-600 dark:text-gray-300">
+                        Payments
+                    </h3>
+                    <div class="rounded-xl border dark:border-gray-700 overflow-hidden">
+                        <table class="w-full text-sm">
+                            <tbody id="ctxPayments"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- ACCOUNTS RECEIVABLE -->
+                <div id="ctxARSection"
+                    class="hidden rounded-xl border border-red-200 dark:border-red-900 bg-red-50/50 dark:bg-red-900/20 p-5">
+
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-semibold text-red-600">Accounts Receivable</h3>
+                        <span id="ctxARStatus"
+                            class="text-xs px-2 py-1 rounded bg-red-100 text-red-700"></span>
+                    </div>
+
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm mb-3">
+                        <div>
+                            <p class="text-gray-500 text-xs">Amount</p>
+                            <p id="ctxARAmount" class="font-semibold"></p>
+                        </div>
+                        <div>
+                            <p class="text-gray-500 text-xs">Balance</p>
+                            <p id="ctxARBalance" class="font-semibold"></p>
+                        </div>
+                        <div>
+                            <p class="text-gray-500 text-xs">Remarks</p>
+                            <p id="ctxARRemarks" class="text-xs"></p>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h4 class="text-sm font-medium mb-2">A/R Payments</h4>
+                        <div class="rounded-lg border dark:border-gray-700 overflow-hidden">
+                            <table class="w-full text-sm">
+                                <tbody id="ctxARPayments"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
 
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="js/client-profile.js"></script>

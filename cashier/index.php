@@ -73,12 +73,42 @@ $username     = $_SESSION['username'] ?? 'Cashier';
             </button>
         </div>
     </div>
+    <!-- ================= WAITING FOR ADMIN OVERLAY ================= -->
+    <div id="pendingApprovalOverlay"
+        class="fixed inset-0 z-40 hidden flex items-center justify-center
+           bg-gray-900/60 backdrop-blur-sm">
+
+        <div class="bg-white dark:bg-gray-800 rounded-2xl
+                p-8 w-full max-w-md text-center shadow-xl">
+
+            <div class="flex justify-center mb-4">
+                <svg class="animate-spin h-8 w-8 text-yellow-500"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10"
+                        stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor"
+                        d="M4 12a8 8 0 018-8v8z"></path>
+                </svg>
+            </div>
+
+            <h2 class="text-xl font-semibold mb-2">
+                Waiting for Admin…
+            </h2>
+
+            <p class="text-sm text-gray-500 dark:text-gray-400">
+                Your shift close request is under review.<br>
+                The system is temporarily locked.
+            </p>
+        </div>
+    </div>
+
 
     <?php include 'cashier-navbar.php'; ?>
 
     <!-- ================= MAIN POS ================= -->
 
-    <div class="flex h-[calc(100vh-3.5rem)] gap-4 p-4">
+    <div id="possContainer" class="flex h-[calc(100vh-3.5rem)] gap-4 p-4">
         <!-- ===== LEFT ===== -->
 
         <?php include 'cashier-left-appointments.php'; ?>
@@ -721,6 +751,69 @@ $username     = $_SESSION['username'] ?? 'Cashier';
             </div>
         </div>
     </div>
+
+    <!-- CLOSE SHIFT MODAL -->
+    <div id="closeShiftModal"
+        class="fixed inset-0 z-50 hidden flex items-center justify-center
+           bg-black/50 backdrop-blur-sm">
+
+        <div class="bg-white dark:bg-gray-800 rounded-2xl
+        w-full max-w-sm shadow-xl p-6">
+
+            <h3 class="text-lg font-semibold mb-1">
+                Close Shift
+            </h3>
+            <p class="text-xs text-gray-500 mb-4">
+                Enter closing cash and optional remarks
+            </p>
+
+            <!-- Closing Cash -->
+            <div class="mb-3">
+                <label class="text-xs text-gray-500">Closing Cash</label>
+                <input
+                    id="closeShiftCash"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    class="w-full mt-1 px-3 py-2 rounded-lg border
+                       border-gray-300 dark:border-gray-600
+                       dark:bg-gray-700"
+                    placeholder="0.00">
+            </div>
+
+            <!-- Remarks -->
+            <div class="mb-4">
+                <label class="text-xs text-gray-500">
+                    Remarks (optional)
+                </label>
+                <textarea
+                    id="closeShiftRemarks"
+                    rows="3"
+                    class="w-full mt-1 px-3 py-2 rounded-lg border
+                       border-gray-300 dark:border-gray-600
+                       dark:bg-gray-700"
+                    placeholder="Notes for admin..."></textarea>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex justify-end gap-2">
+                <button
+                    id="cancelCloseShiftBtn"
+                    class="px-4 py-2 text-sm rounded
+                       bg-gray-200 dark:bg-gray-600">
+                    Cancel
+                </button>
+
+                <button
+                    id="confirmCloseShiftBtn"
+                    class="px-4 py-2 text-sm rounded
+                       bg-red-600 text-white">
+                    Submit for Approval
+                </button>
+            </div>
+        </div>
+    </div>
+
 
     <!-- Toast -->
     <div id="toast"

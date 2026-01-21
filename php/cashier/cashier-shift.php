@@ -21,10 +21,10 @@ $action  = $_POST['action'] ?? '';
 if ($action === 'status') {
 
     $stmt = $conn->prepare("
-        SELECT id, status, opened_at 
+        SELECT id, status, opened_at
         FROM cashier_shifts
         WHERE user_id = ?
-        ORDER BY id DESC
+        ORDER BY opened_at DESC
         LIMIT 1
     ");
     $stmt->bind_param("i", $user_id);
@@ -32,7 +32,10 @@ if ($action === 'status') {
     $res = $stmt->get_result();
 
     if ($res->num_rows === 0) {
-        echo json_encode(["success" => true, "status" => "none"]);
+        echo json_encode([
+            "success" => true,
+            "status"  => "none"
+        ]);
         exit;
     }
 
@@ -40,9 +43,16 @@ if ($action === 'status') {
 
     echo json_encode([
         "success" => true,
-        "status" => $shift['status'],
-        "shift"  => $shift
+        "status"  => $shift['status'],
+        "shift"   => [
+            "id" => $shift['id'],
+            "status" => $shift['status'],
+            "approval_status" => $shift['approval_status'] ?? null,
+            "remarks" => $shift['remarks'] ?? null,
+            "approved_at" => $shift['approved_at'] ?? null
+        ]
     ]);
+
     exit;
 }
 
@@ -53,17 +63,22 @@ if ($action === 'open') {
 
     $opening_cash = floatval($_POST['opening_cash'] ?? 0);
 
-    // Prevent multiple open shifts
-    $check = $conn->query("
-        SELECT id FROM cashier_shifts 
-        WHERE status = 'open'
+    // Prevent open OR pending shift for THIS user
+    $check = $conn->prepare("
+        SELECT id 
+        FROM cashier_shifts 
+        WHERE user_id = ?
+          AND status IN ('open','pending_close')
         LIMIT 1
     ");
+    $check->bind_param("i", $user_id);
+    $check->execute();
+    $res = $check->get_result();
 
-    if ($check->num_rows > 0) {
+    if ($res->num_rows > 0) {
         echo json_encode([
             "success" => false,
-            "error" => "A shift is already open."
+            "error"   => "You already have an active or pending shift."
         ]);
         exit;
     }
@@ -75,7 +90,15 @@ if ($action === 'open') {
     ");
     $stmt->bind_param("id", $user_id, $opening_cash);
 
-    echo json_encode(["success" => $stmt->execute()]);
+    if ($stmt->execute()) {
+        echo json_encode(["success" => true]);
+    } else {
+        echo json_encode([
+            "success" => false,
+            "error" => "Failed to open shift."
+        ]);
+    }
+
     exit;
 }
 
@@ -85,10 +108,14 @@ if ($action === 'open') {
 if ($action === 'request_close') {
 
     $closing_cash = floatval($_POST['closing_cash'] ?? 0);
+    $remarks = trim($_POST['remarks'] ?? null);
 
     $stmt = $conn->prepare("
-        SELECT id FROM cashier_shifts
-        WHERE user_id = ? AND status = 'open'
+        SELECT id 
+        FROM cashier_shifts
+        WHERE user_id = ?
+          AND status = 'open'
+          AND is_active = 1
         LIMIT 1
     ");
     $stmt->bind_param("i", $user_id);
@@ -107,20 +134,21 @@ if ($action === 'request_close') {
 
     $stmt = $conn->prepare("
         UPDATE cashier_shifts
-        SET closing_cash = ?,
+        SET
+            closing_cash = ?,
+            remarks = ?,
             status = 'pending_close'
         WHERE id = ?
     ");
-    $stmt->bind_param("di", $closing_cash, $shift['id']);
+    $stmt->bind_param("dsi", $closing_cash, $remarks, $shift['id']);
 
     echo json_encode([
-        "success" => $stmt->execute(),
-        "pending" => true
+        "success" => $stmt->execute()
     ]);
     exit;
 }
 
 echo json_encode([
     "success" => false,
-    "error" => "Invalid action"
+    "error"   => "Invalid action"
 ]);
