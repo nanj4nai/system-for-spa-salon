@@ -563,3 +563,7 @@ ADD UNIQUE KEY uniq_ar_transaction (transaction_id);
 
 ALTER TABLE payments
 ADD UNIQUE KEY uniq_receipt_number (receipt_number);
+ALTER TABLE payments
+ADD COLUMN remarks TEXT NULL AFTER receipt_number;
+ALTER TABLE payments
+ADD COLUMN reference_number VARCHAR(100) NULL;

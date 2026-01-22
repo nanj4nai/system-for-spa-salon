@@ -178,3 +178,46 @@ function getServiceProductUsage(mysqli $conn, int $transaction_id): array
 
     return $map;
 }
+
+function generateReceiptNumber(mysqli $conn): string
+{
+    // 🔒 Must be called inside a transaction
+
+    $res = $conn->query("
+        SELECT invoice_prefix
+        FROM settings
+        ORDER BY id ASC
+        LIMIT 1
+    ");
+
+    $prefix = ($res && $res->num_rows)
+        ? $res->fetch_assoc()['invoice_prefix']
+        : 'SPA';
+
+    $year = date('Y');
+
+    $stmt = $conn->prepare("
+        SELECT
+            COALESCE(
+                MAX(
+                    CAST(SUBSTRING_INDEX(receipt_number, '-', -1) AS UNSIGNED)
+                ), 0
+            ) AS last_seq
+        FROM payments
+        WHERE receipt_number LIKE CONCAT(?, '-', ?, '-%')
+        FOR UPDATE
+    ");
+
+    $stmt->bind_param("ss", $prefix, $year);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+
+    $nextSeq = ((int)$row['last_seq']) + 1;
+
+    return sprintf(
+        "%s-%s-%06d",
+        $prefix,
+        $year,
+        $nextSeq
+    );
+}

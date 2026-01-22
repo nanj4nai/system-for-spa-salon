@@ -2,6 +2,7 @@
 session_start();
 header("Content-Type: application/json");
 require_once "db.php";
+require_once "cashier/helpers.php";
 
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
     echo json_encode(["success" => false, "error" => "Unauthorized"]);
@@ -39,6 +40,7 @@ if ($action === 'list') {
 /* ==========================
    FETCH close SHIFTS
 ========================== */
+
 if ($action === 'list_closed') {
     $res = $conn->query("
         SELECT 
@@ -47,12 +49,26 @@ if ($action === 'list_closed') {
             cs.closed_at,
             cs.opening_cash,
             cs.closing_cash,
-            u.username
+            cs.status,
+            u.username,
+
+            COUNT(ar.id) AS ar_count,
+            COALESCE(SUM(ar.balance), 0) AS ar_balance
+
         FROM cashier_shifts cs
         JOIN users u ON cs.user_id = u.id
+
+        LEFT JOIN spa_transactions t
+            ON t.shift_id = cs.id
+
+        LEFT JOIN accounts_receivable ar
+            ON ar.transaction_id = t.id
+           AND ar.status = 'open'
+
         WHERE cs.status = 'closed'
+
+        GROUP BY cs.id
         ORDER BY cs.closed_at DESC
-        LIMIT 50
     ");
 
     echo json_encode([
@@ -71,10 +87,27 @@ if ($action === 'list_active') {
             cs.id,
             cs.opened_at,
             cs.opening_cash,
-            u.username
+            cs.closing_cash,
+            cs.status,
+            u.username,
+
+            COUNT(ar.id) AS ar_count,
+            COALESCE(SUM(ar.balance), 0) AS ar_balance
+
         FROM cashier_shifts cs
         JOIN users u ON cs.user_id = u.id
+
+        LEFT JOIN spa_transactions t
+            ON t.shift_id = cs.id
+
+        LEFT JOIN accounts_receivable ar
+            ON ar.transaction_id = t.id
+           AND ar.status = 'open'
+
         WHERE cs.status = 'open'
+          AND cs.is_active = 1
+
+        GROUP BY cs.id
         ORDER BY cs.opened_at ASC
     ");
 
@@ -84,7 +117,6 @@ if ($action === 'list_active') {
     ]);
     exit;
 }
-
 
 /* ==========================
    FETCH PENDING SHIFTS
@@ -98,10 +130,23 @@ if ($action === 'list_pending') {
             cs.closing_cash,
             cs.remarks,
             cs.status,
-            u.username
+            u.username,
+
+            COUNT(ar.id) AS ar_count,
+            COALESCE(SUM(ar.balance), 0) AS ar_balance
+
         FROM cashier_shifts cs
         JOIN users u ON cs.user_id = u.id
+
+        LEFT JOIN spa_transactions t
+            ON t.shift_id = cs.id
+
+        LEFT JOIN accounts_receivable ar
+            ON ar.transaction_id = t.id
+           AND ar.status = 'open'
+
         WHERE cs.status = 'pending_close'
+        GROUP BY cs.id
         ORDER BY cs.opened_at ASC
     ");
 
@@ -338,7 +383,9 @@ if ($action === 'transaction_details') {
 
     // SERVICES
     $services = $conn->query("
-        SELECT
+       SELECT
+            ts.id,
+            ts.appointment_service_id,
             s.name AS service_name,
             e.full_name AS staff_name,
             ts.quantity,
@@ -348,7 +395,29 @@ if ($action === 'transaction_details') {
         JOIN services s ON s.id = ts.service_id
         JOIN employees e ON e.id = ts.employee_id
         WHERE ts.transaction_id = $transaction_id
+
     ")->fetch_all(MYSQLI_ASSOC);
+
+    // SERVICE CONSUMABLES (grouped by appointment_service_id)
+    $consumables = $conn->query("
+            SELECT
+                asp.appointment_service_id,
+                p.name AS product_name,
+                asp.quantity_used,
+                asp.unit,
+                p.price AS container_price,
+                p.unit_per_item,
+                (p.price / p.unit_per_item) AS unit_price,
+                (asp.quantity_used * (p.price / p.unit_per_item)) AS total_price
+            FROM appointment_service_products asp
+            JOIN products p ON p.id = asp.product_id
+            WHERE asp.appointment_service_id IN (
+                SELECT appointment_service_id
+                FROM spa_transaction_services
+                WHERE transaction_id = $transaction_id
+                AND appointment_service_id IS NOT NULL
+            )
+        ")->fetch_all(MYSQLI_ASSOC);
 
     // PRODUCTS
     $products = $conn->query("
@@ -364,92 +433,136 @@ if ($action === 'transaction_details') {
 
     // PAYMENTS
     $payments = $conn->query("
-        SELECT payment_method, amount, payment_date
-        FROM payments
-        WHERE transaction_id = $transaction_id
+    SELECT
+        payment_method,
+        amount,
+        payment_date,
+        receipt_number
+    FROM payments
+    WHERE transaction_id = $transaction_id
+    ORDER BY payment_date ASC
     ")->fetch_all(MYSQLI_ASSOC);
 
     echo json_encode([
         "success" => true,
         "transaction" => $transaction,
         "services" => $services,
+        "service_consumables" => $consumables, // 👈 ADD THIS
         "products" => $products,
         "payments" => $payments,
         "receivable" => $ar,
-        "ar_payments" => $arPayments   // 👈 ADD THIS
+        "ar_payments" => $arPayments
     ]);
     exit;
 }
-
 if ($action === 'apply_ar_payment') {
 
     $receivable_id = intval($_POST['receivable_id']);
     $amount = floatval($_POST['amount']);
     $remarks = trim($_POST['remarks'] ?? '');
+    $method = $_POST['payment_method'] ?? 'cash';
+    $reference = trim($_POST['reference'] ?? '');
 
     if ($amount <= 0) {
         echo json_encode(["success" => false, "error" => "Invalid payment amount"]);
         exit;
     }
 
-    // 1. Fetch receivable
-    $stmt = $conn->prepare("
-        SELECT
-            ar.id,
-            ar.transaction_id,
-            ar.balance
-        FROM accounts_receivable ar
-        WHERE ar.id = ?
-          AND ar.status = 'open'
-    ");
-    $stmt->bind_param("i", $receivable_id);
-    $stmt->execute();
-    $ar = $stmt->get_result()->fetch_assoc();
-
-    if (!$ar) {
-        echo json_encode(["success" => false, "error" => "Receivable not found or already paid"]);
+    if ($method !== 'cash' && $reference === '') {
+        echo json_encode(["success" => false, "error" => "Reference is required for non-cash payments"]);
         exit;
     }
 
-    if ($amount > $ar['balance']) {
-        echo json_encode(["success" => false, "error" => "Payment exceeds balance"]);
-        exit;
-    }
+    $conn->begin_transaction();
 
-    // 2. Insert A/R payment
-    $stmt = $conn->prepare("
-        INSERT INTO ar_payments (receivable_id, amount, remarks)
-        VALUES (?, ?, ?)
-    ");
-    $stmt->bind_param("ids", $receivable_id, $amount, $remarks);
-    $stmt->execute();
-
-    // 3. Update receivable balance
-    $newBalance = $ar['balance'] - $amount;
-    $newStatus = $newBalance <= 0 ? 'paid' : 'open';
-
-    $stmt = $conn->prepare("
-        UPDATE accounts_receivable
-        SET balance = ?, status = ?
-        WHERE id = ?
-    ");
-    $stmt->bind_param("dsi", $newBalance, $newStatus, $receivable_id);
-    $stmt->execute();
-
-    // 4. If fully paid → update transaction
-    if ($newBalance <= 0) {
+    try {
+        // 🔒 Lock receivable
         $stmt = $conn->prepare("
-            UPDATE spa_transactions
-            SET payment_status = 'paid'
+            SELECT id, transaction_id, balance
+            FROM accounts_receivable
+            WHERE id = ? AND status = 'open'
+            FOR UPDATE
+        ");
+        $stmt->bind_param("i", $receivable_id);
+        $stmt->execute();
+        $ar = $stmt->get_result()->fetch_assoc();
+
+        if (!$ar) {
+            throw new Exception("Receivable not found or closed");
+        }
+
+        if ($amount > $ar['balance']) {
+            throw new Exception("Payment exceeds balance");
+        }
+
+        // 1️⃣ Insert AR payment history
+        $stmt = $conn->prepare("
+            INSERT INTO ar_payments (receivable_id, amount, remarks)
+            VALUES (?, ?, ?)
+        ");
+        $stmt->bind_param("ids", $receivable_id, $amount, $remarks);
+        $stmt->execute();
+
+        // 2️⃣ Generate receipt
+        $receiptNumber = generateReceiptNumber($conn);
+
+        // 3️⃣ Insert real payment record
+        $stmt = $conn->prepare("
+            INSERT INTO payments
+                (transaction_id, amount, payment_method, receipt_number, remarks, reference_number)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ");
+        $stmt->bind_param(
+            "idssss",
+            $ar['transaction_id'],
+            $amount,
+            $method,
+            $receiptNumber,
+            $remarks,
+            $reference
+        );
+        $stmt->execute();
+
+        // 4️⃣ Update receivable
+        $newBalance = $ar['balance'] - $amount;
+        $newStatus = $newBalance <= 0 ? 'paid' : 'open';
+
+        $stmt = $conn->prepare("
+            UPDATE accounts_receivable
+            SET balance = ?, status = ?
             WHERE id = ?
         ");
-        $stmt->bind_param("i", $ar['transaction_id']);
+        $stmt->bind_param("dsi", $newBalance, $newStatus, $receivable_id);
         $stmt->execute();
-    }
 
-    echo json_encode(["success" => true]);
+        // 5️⃣ Update transaction
+        $paymentStatus = $newBalance <= 0 ? 'paid' : 'partial';
+
+        $stmt = $conn->prepare("
+            UPDATE spa_transactions
+            SET payment_status = ?
+            WHERE id = ?
+        ");
+        $stmt->bind_param("si", $paymentStatus, $ar['transaction_id']);
+        $stmt->execute();
+
+        $conn->commit();
+
+        echo json_encode([
+            "success" => true,
+            "receipt_number" => $receiptNumber
+        ]);
+    } catch (Throwable $e) {
+        $conn->rollback();
+
+        echo json_encode([
+            "success" => false,
+            "error" => $e->getMessage()
+        ]);
+    }
     exit;
 }
+
 
 if ($action === 'mark_ar') {
 

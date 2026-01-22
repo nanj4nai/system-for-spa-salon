@@ -257,8 +257,7 @@ document.getElementById("confirmPaymentBtn")?.addEventListener("click", async ()
 });
 function openReceiptModal(data) {
     document.getElementById("rReceiptNo").textContent = data.receipt;
-    document.getElementById("rDate").textContent =
-        new Date().toLocaleString();
+    document.getElementById("rDate").textContent = new Date().toLocaleString();
     document.getElementById("rCashier").textContent =
         CashierState.currentUser || "Cashier";
 
@@ -276,11 +275,8 @@ function openReceiptModal(data) {
 
     const itemsBox = document.getElementById("rItems");
 
-    // 🔹 Label changes depending on payment type
     const paymentLabel =
-        data.balance > 0
-            ? "PARTIAL PAYMENT"
-            : "FULL PAYMENT";
+        data.balance > 0 ? "PARTIAL PAYMENT" : "FULL PAYMENT";
 
     itemsBox.innerHTML = `
         <div class="flex justify-between font-semibold">
@@ -288,11 +284,17 @@ function openReceiptModal(data) {
             <span>₱${data.paid.toFixed(2)}</span>
         </div>
 
-        ${data.balance > 0
-            ? `<div class="text-[10px] mt-1 text-gray-600">
-                   Remaining balance recorded as Account Receivable
-               </div>`
-            : ""}
+        ${data.reference ? `
+            <div class="text-[10px] mt-1 text-gray-600">
+                Reference: ${data.reference}
+            </div>
+        ` : ""}
+
+        ${data.balance > 0 ? `
+            <div class="text-[10px] mt-1 text-gray-600">
+                Remaining balance recorded as Account Receivable
+            </div>
+        ` : ""}
     `;
 
     document.getElementById("receiptModal")

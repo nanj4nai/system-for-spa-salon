@@ -250,88 +250,90 @@ $role = $_SESSION["role"];
 
             <div class="bg-white dark:bg-gray-800 w-full max-w-5xl rounded-2xl shadow-xl p-6 relative">
 
-                <!-- CLOSE -->
-                <button onclick="closeTransactionModal()"
-                    class="absolute top-4 right-4 text-gray-400 hover:text-red-500 text-xl">
-                    ✕
-                </button>
-
-                <!-- TITLE -->
-                <div class="mb-6">
-                    <h2 class="text-2xl font-semibold text-indigo-900 dark:text-indigo-200">
-                        Transaction Details
-                    </h2>
-                    <p class="text-sm text-gray-500 dark:text-gray-400">
-                        Complete breakdown of services, products, and payments
-                    </p>
-                </div>
-
-                <!-- SUMMARY CARDS -->
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 text-sm">
-
-                    <div class="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
-                        <p class="text-gray-400">Transaction #</p>
-                        <p id="txNumber" class="font-semibold"></p>
-                    </div>
-
-                    <div class="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
-                        <p class="text-gray-400">Client</p>
-                        <p id="txClient" class="font-semibold"></p>
-                    </div>
-
-                    <div class="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
-                        <p class="text-gray-400">Status</p>
-                        <p id="txStatus"
-                            class="inline-block px-2 py-1 rounded text-xs font-semibold bg-blue-100 text-blue-700">
+                <!-- HEADER -->
+                <div class="flex items-start justify-between mb-6">
+                    <div>
+                        <h2 class="text-2xl font-semibold text-indigo-900 dark:text-indigo-200">
+                            Transaction Details
+                        </h2>
+                        <p class="text-sm text-gray-500 dark:text-gray-400">
+                            Full breakdown of charges and payments
                         </p>
                     </div>
 
-                    <div class="bg-gray-50 dark:bg-gray-700 rounded-xl p-4">
-                        <p class="text-gray-400">Balance</p>
-                        <p id="txBalance"
-                            class="font-semibold text-red-600"></p>
+                    <button onclick="closeTransactionModal()"
+                        class="text-gray-400 hover:text-red-500 text-xl">
+                        ✕
+                    </button>
+                </div>
+
+                <!-- SUMMARY -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+
+                    <div class="rounded-xl p-4 bg-indigo-50 dark:bg-indigo-900/30">
+                        <p class="text-xs text-indigo-500">Transaction #</p>
+                        <p id="txNumber" class="font-mono font-semibold text-sm"></p>
+                    </div>
+
+                    <div class="rounded-xl p-4 bg-gray-50 dark:bg-gray-700">
+                        <p class="text-xs text-gray-400">Client</p>
+                        <p id="txClient" class="font-semibold"></p>
+                    </div>
+
+                    <div class="rounded-xl p-4 bg-blue-50 dark:bg-blue-900/30">
+                        <p class="text-xs text-blue-500">Status</p>
+                        <div id="txStatus"></div>
+                    </div>
+
+                    <div class="rounded-xl p-4 bg-red-50 dark:bg-red-900/30">
+                        <p class="text-xs text-red-500">Balance</p>
+                        <p id="txBalance" class="font-semibold text-red-600"></p>
                     </div>
                 </div>
 
-                <!-- SERVICES -->
-                <div class="mb-6">
-                    <h3 class="font-semibold mb-2">Services</h3>
-                    <div class="border rounded-xl overflow-hidden">
-                        <table class="w-full text-sm">
-                            <thead class="bg-gray-100 dark:bg-gray-700">
-                                <tr>
-                                    <th class="p-2 text-left">Service</th>
-                                    <th class="p-2 text-left">Staff</th>
-                                    <th class="p-2 text-center">Qty</th>
-                                    <th class="p-2 text-right">Price</th>
-                                    <th class="p-2 text-right">Total</th>
-                                </tr>
-                            </thead>
-                            <tbody id="txServices" class="divide-y"></tbody>
-                        </table>
-                    </div>
-                </div>
+                <!-- ITEMS -->
+                <div class="grid md:grid-cols-2 gap-6 mb-8">
 
-                <!-- PRODUCTS -->
-                <div class="mb-6">
-                    <h3 class="font-semibold mb-2">Products</h3>
-                    <div class="border rounded-xl overflow-hidden">
-                        <table class="w-full text-sm">
-                            <thead class="bg-gray-100 dark:bg-gray-700">
-                                <tr>
-                                    <th class="p-2 text-left">Product</th>
-                                    <th class="p-2 text-center">Qty</th>
-                                    <th class="p-2 text-right">Price</th>
-                                    <th class="p-2 text-right">Total</th>
-                                </tr>
-                            </thead>
-                            <tbody id="txProducts" class="divide-y"></tbody>
-                        </table>
+                    <!-- SERVICES -->
+                    <div>
+                        <h3 class="font-semibold mb-2">Services</h3>
+                        <div class="border rounded-xl overflow-hidden">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-100 dark:bg-gray-700">
+                                    <tr>
+                                        <th class="p-2 text-left">Service</th>
+                                        <th class="p-2 text-left">Staff</th>
+                                        <th class="p-2 text-center">Qty</th>
+                                        <th class="p-2 text-right">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="txServices" class="divide-y"></tbody>
+                            </table>
+                        </div>
                     </div>
+
+                    <!-- PRODUCTS -->
+                    <div>
+                        <h3 class="font-semibold mb-2">Products</h3>
+                        <div class="border rounded-xl overflow-hidden">
+                            <table class="w-full text-sm">
+                                <thead class="bg-gray-100 dark:bg-gray-700">
+                                    <tr>
+                                        <th class="p-2 text-left">Product</th>
+                                        <th class="p-2 text-center">Qty</th>
+                                        <th class="p-2 text-right">Unit Price</th>
+                                        <th class="p-2 text-right">Total</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="txProducts" class="divide-y"></tbody>
+                            </table>
+                        </div>
+                    </div>
+
                 </div>
 
                 <!-- PAYMENTS -->
-                <div>
+                <div class="mb-8">
                     <h3 class="font-semibold mb-2">Payments</h3>
                     <div class="border rounded-xl overflow-hidden">
                         <table class="w-full text-sm">
@@ -340,49 +342,53 @@ $role = $_SESSION["role"];
                                     <th class="p-2 text-left">Method</th>
                                     <th class="p-2 text-right">Amount</th>
                                     <th class="p-2 text-right">Date</th>
+                                    <th class="p-2 text-right">Receipt</th>
                                 </tr>
                             </thead>
                             <tbody id="txPayments" class="divide-y"></tbody>
                         </table>
                     </div>
                 </div>
+
                 <!-- ACCOUNTS RECEIVABLE -->
-                <div id="txARSection" class="mt-6 hidden">
-                    <h3 class="font-semibold mb-2 text-orange-700">
-                        Accounts Receivable
-                    </h3>
+                <div id="txARSection"
+                    class="hidden border-l-4 border-orange-500 bg-orange-50 dark:bg-orange-900/20 p-4 rounded-xl mb-6">
+
+                    <div class="flex items-center justify-between mb-3">
+                        <h3 class="font-semibold text-orange-700">
+                            Accounts Receivable
+                        </h3>
+
+                        <button id="payARBtn"
+                            onclick="openARPaymentModal()"
+                            class="px-3 py-1.5 text-sm bg-green-600 hover:bg-green-700
+                text-white rounded-lg">
+                            Apply Payment
+                        </button>
+                    </div>
 
                     <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                        <div class="bg-orange-50 rounded-xl p-4">
+                        <div>
                             <p class="text-gray-500">Amount</p>
                             <p id="arAmountView" class="font-semibold"></p>
                         </div>
-
-                        <div class="bg-orange-50 rounded-xl p-4">
+                        <div>
                             <p class="text-gray-500">Balance</p>
                             <p id="arBalanceView" class="font-semibold"></p>
                         </div>
-
-                        <div class="bg-orange-50 rounded-xl p-4">
+                        <div>
                             <p class="text-gray-500">Status</p>
                             <p id="arStatusView" class="font-semibold"></p>
                         </div>
-
-                        <div class="bg-orange-50 rounded-xl p-4">
+                        <div>
                             <p class="text-gray-500">Remarks</p>
                             <p id="arRemarksView" class="text-xs"></p>
                         </div>
                     </div>
-                    <button
-                        id="payARBtn"
-                        onclick="openARPaymentModal()"
-                        class="mt-3 px-3 py-2 text-sm bg-green-600 hover:bg-green-700
-           text-white rounded-lg">
-                        Apply A/R Payment
-                    </button>
                 </div>
+
                 <!-- A/R PAYMENT HISTORY -->
-                <div id="txARPaymentsSection" class="mt-6 hidden">
+                <div id="txARPaymentsSection" class="hidden">
                     <h3 class="font-semibold mb-2 text-orange-700">
                         A/R Payment History
                     </h3>
@@ -400,7 +406,6 @@ $role = $_SESSION["role"];
                         </table>
                     </div>
                 </div>
-
             </div>
         </div>
         <div id="arPaymentModal"
@@ -413,7 +418,17 @@ $role = $_SESSION["role"];
                     Balance:
                     <span id="arPayBalance" class="font-semibold"></span>
                 </p>
+                <select id="arPayMethod"
+                    class="w-full border rounded p-2 mb-2">
+                    <option value="cash">Cash</option>
+                    <option value="gcash">GCash</option>
+                    <option value="ewallet">Other Ewallet</option>
+                    <option value="card">Card</option>
+                </select>
 
+                <input id="arPayRef"
+                    class="w-full border rounded p-2 mb-2 hidden"
+                    placeholder="Reference / Last 4 digits">
                 <input id="arPayAmount"
                     type="number"
                     step="0.01"

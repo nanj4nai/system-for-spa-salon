@@ -3,49 +3,7 @@ session_start();
 header("Content-Type: application/json");
 
 require_once "../../db.php";
-function generateReceiptNumber(mysqli $conn): string
-{
-    // Get prefix from settings
-    $res = $conn->query("
-        SELECT invoice_prefix
-        FROM settings
-        ORDER BY id ASC
-        LIMIT 1
-    ");
-
-    $prefix = $res && $res->num_rows
-        ? $res->fetch_assoc()['invoice_prefix']
-        : 'SPA';
-
-    $year = date('Y');
-
-    // Lock receipt generation (critical)
-    $stmt = $conn->prepare("
-        SELECT
-            MAX(
-                CAST(
-                    SUBSTRING_INDEX(receipt_number, '-', -1) AS UNSIGNED
-                )
-            ) AS last_seq
-        FROM payments
-        WHERE receipt_number LIKE CONCAT(?, '-', ?, '-%')
-        FOR UPDATE
-    ");
-
-    $stmt->bind_param("ss", $prefix, $year);
-    $stmt->execute();
-    $row = $stmt->get_result()->fetch_assoc();
-
-    $nextSeq = ((int)$row['last_seq']) + 1;
-
-    return sprintf(
-        "%s-%s-%06d",
-        $prefix,
-        $year,
-        $nextSeq
-    );
-}
-
+require_once "../helpers.php";
 
 /* ================================
    AUTHORIZATION
@@ -130,13 +88,29 @@ try {
     $receiptNumber = generateReceiptNumber($conn);
 
     $stmt = $conn->prepare("
-    INSERT INTO payments
-        (transaction_id, amount, payment_method, receipt_number)
-    VALUES (?, ?, ?, ?)
-");
-    $stmt->bind_param("idss", $transaction_id, $amount, $method, $receiptNumber);
-    $stmt->execute();
+        INSERT INTO payments
+            (
+                transaction_id,
+                amount,
+                payment_method,
+                receipt_number,
+                reference_number,
+                remarks
+            )
+        VALUES (?, ?, ?, ?, ?, ?)
+    ");
 
+    $stmt->bind_param(
+        "idssss",
+        $transaction_id,
+        $amount,
+        $method,
+        $receiptNumber,
+        $reference,
+        $remarks
+    );
+
+    $stmt->execute();
 
     /* ================================
        UPDATE TRANSACTION
@@ -203,7 +177,8 @@ try {
         "receipt_number" => $receiptNumber,
         "payment_status" => $paymentStatus,
         "balance" => $balance,
-        "is_receivable" => $isReceivable
+        "is_receivable" => $isReceivable,
+        "reference" => $reference
     ]);
 } catch (Throwable $e) {
     $conn->rollback();

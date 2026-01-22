@@ -45,6 +45,8 @@ $username     = $_SESSION['username'] ?? 'Cashier';
         }
 
         @media print {
+
+            /* 🔒 Hide everything except receipt */
             body * {
                 visibility: hidden;
             }
@@ -54,11 +56,42 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                 visibility: visible;
             }
 
+            /* 🧾 THERMAL PAPER SETTINGS */
+            @page {
+                size: 80mm auto;
+                /* change to 58mm if needed */
+                margin: 0;
+            }
+
+            html,
+            body {
+                margin: 0 !important;
+                padding: 0 !important;
+                width: 80mm;
+                background: white;
+            }
+
+            /* 🚫 Disable layout centering */
+            body {
+                display: block !important;
+                min-height: auto !important;
+            }
+
+            /* 🧾 Receipt positioning */
             #receiptPaper {
-                position: absolute;
+                position: relative;
                 left: 0;
                 top: 0;
-                width: 280px;
+                width: 80mm !important;
+                max-width: 80mm !important;
+                margin: 0 auto;
+                padding: 4mm;
+                box-shadow: none !important;
+            }
+
+            /* 🚫 Hide buttons */
+            .print\:hidden {
+                display: none !important;
             }
         }
     </style>
@@ -333,7 +366,7 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                                     —
                                 </span>
                             </div>
-                            
+
                             <div id="paymentReceiptList" class="mt-2 space-y-1"></div>
                         </div>
 

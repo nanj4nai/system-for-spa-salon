@@ -25,6 +25,22 @@ function formatDateSafe(value) {
         : d.toLocaleString();
 }
 
+function renderARBadge(s) {
+    const hasAR = Number(s.ar_count) > 0;
+
+    return hasAR
+        ? `
+        <span class="inline-flex items-center gap-1
+            px-2 py-1 text-xs rounded
+            bg-orange-100 text-orange-700 font-semibold">
+            ⚠ ${s.ar_count} · ₱${Number(s.ar_balance).toFixed(2)}
+        </span>`
+        : `
+        <span class="text-xs text-gray-400 italic">
+            None
+        </span>`;
+}
+
 
 /* =====================================================
    TAB HANDLING
@@ -83,7 +99,7 @@ function renderTable(shifts) {
             <th>Opened</th>
             <th>Opening</th>
             <th>Declared</th>
-            <th>Remarks</th>
+            <th>A/R</th>
             <th>Status</th>
             <th class="text-right">Actions</th>`;
     }
@@ -93,37 +109,54 @@ function renderTable(shifts) {
             <th>Cashier</th>
             <th>Opened</th>
             <th>Opening</th>
+            <th>A/R</th>
             <th class="text-right">Actions</th>`;
     }
 
     if (currentTab === "closed") {
         head.innerHTML = `
-            <th>Cashier</th>
-            <th>Opened</th>
-            <th>Closed</th>
-            <th>Opening</th>
-            <th>Closing</th>
-            <th class="text-right">Actions</th>`;
+        <th>Cashier</th>
+        <th>Opened</th>
+        <th>Closed</th>
+        <th>Opening</th>
+        <th>Closing</th>
+        <th>A/R</th>
+        <th class="text-right">Actions</th>`;
     }
 
     table.innerHTML = shifts.map(s => {
 
         /* ---------- PENDING ---------- */
         if (currentTab === "pending") {
+            const hasAR = Number(s.ar_count) > 0;
+            const arBadge = hasAR
+                ? `
+        <span class="inline-flex items-center gap-1
+            px-2 py-1 text-xs rounded
+            bg-orange-100 text-orange-700 font-semibold">
+            ⚠ ${s.ar_count} · ₱${Number(s.ar_balance).toFixed(2)}
+        </span>`
+                : `
+        <span class="text-xs text-gray-400 italic">
+            None
+        </span>`;
             return `
-            <tr class="border-b">
+            <tr class="border-b ${hasAR ? 'bg-orange-50/40' : ''}">
                 <td class="py-3">${s.username}</td>
                 <td>${new Date(s.opened_at).toLocaleString()}</td>
                 <td>₱${Number(s.opening_cash).toFixed(2)}</td>
                 <td>₱${Number(s.closing_cash).toFixed(2)}</td>
-                <td class="text-xs text-gray-500 max-w-xs truncate">
-                    ${s.remarks || '<span class="italic text-gray-400">—</span>'}
+
+                <td>
+                    ${arBadge}
                 </td>
+
                 <td>
                     <span class="px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-700">
                         Pending
                     </span>
                 </td>
+
                 <td class="text-right space-x-2">
                     <button onclick="viewDetails(${s.id})"
                         class="px-3 py-1 text-xs bg-indigo-600 text-white rounded">
@@ -142,12 +175,20 @@ function renderTable(shifts) {
         }
 
         /* ---------- ACTIVE ---------- */
+        /* ---------- ACTIVE ---------- */
         if (currentTab === "active") {
+            const hasAR = Number(s.ar_count) > 0;
+
             return `
-            <tr class="border-b">
+            <tr class="border-b ${hasAR ? 'bg-orange-50/40' : ''}">
                 <td class="py-3">${s.username}</td>
                 <td>${new Date(s.opened_at).toLocaleString()}</td>
                 <td>₱${Number(s.opening_cash).toFixed(2)}</td>
+
+                <td>
+                    ${renderARBadge(s)}
+                </td>
+
                 <td class="text-right">
                     <button onclick="forceClose(${s.id})"
                         class="px-3 py-1 text-xs bg-red-600 text-white rounded">
@@ -158,13 +199,20 @@ function renderTable(shifts) {
         }
 
         /* ---------- CLOSED ---------- */
+        const hasAR = Number(s.ar_count) > 0;
+
         return `
-        <tr class="border-b">
+        <tr class="border-b ${hasAR ? 'bg-orange-50/40' : ''}">
             <td class="py-3">${s.username}</td>
             <td>${new Date(s.opened_at).toLocaleString()}</td>
             <td>${new Date(s.closed_at).toLocaleString()}</td>
             <td>₱${Number(s.opening_cash).toFixed(2)}</td>
             <td>₱${Number(s.closing_cash).toFixed(2)}</td>
+
+            <td>
+                ${renderARBadge(s)}
+            </td>
+
             <td class="text-right">
                 <button onclick="viewDetails(${s.id})"
                     class="px-3 py-1 text-xs bg-indigo-600 text-white rounded">
@@ -172,6 +220,7 @@ function renderTable(shifts) {
                 </button>
             </td>
         </tr>`;
+
     }).join("");
 }
 
@@ -362,7 +411,10 @@ function openTransactionModal(transactionId) {
             txStatus.innerHTML = statusBadge(tx);
             txBalance.textContent = `₱${Number(tx.balance_due).toFixed(2)}`;
 
-            txServices.innerHTML = renderServices(d.services);
+            txServices.innerHTML = renderServices(
+                d.services,
+                d.service_consumables || []
+            );
             txProducts.innerHTML = renderProducts(d.products);
             txPayments.innerHTML = renderPayments(d.payments);
 
@@ -464,12 +516,12 @@ function closeARPaymentModal() {
 
 function confirmARPayment() {
     const amount = parseFloat(arPayAmount.value);
-
+    const method = arPayMethod.value;
+    const ref = arPayRef.value;
     if (!amount || amount <= 0) {
         alert("Enter a valid amount");
         return;
     }
-
     fetch("php/shift-approvals.php", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -477,6 +529,8 @@ function confirmARPayment() {
             `action=apply_ar_payment` +
             `&receivable_id=${currentReceivableId}` +
             `&amount=${amount}` +
+            `&payment_method=${method}` +
+            `&reference=${encodeURIComponent(ref)}` +
             `&remarks=${encodeURIComponent(arPayRemarks.value)}`
     })
         .then(r => r.json())
@@ -501,7 +555,7 @@ function renderPayments(rows) {
     if (!rows.length) {
         return `
         <tr>
-            <td colspan="3" class="py-4 text-center text-gray-400 italic">
+            <td colspan="4" class="py-4 text-center text-gray-400 italic">
                 No payments recorded
             </td>
         </tr>`;
@@ -512,27 +566,49 @@ function renderPayments(rows) {
             <td class="p-2 text-left capitalize">
                 ${p.payment_method}
             </td>
+
             <td class="p-2 text-right font-mono">
                 ₱${Number(p.amount).toFixed(2)}
             </td>
+
             <td class="p-2 text-right text-xs text-gray-500">
                 ${formatDateSafe(p.payment_date)}
+            </td>
+
+            <td class="p-2 text-right">
+                ${p.receipt_number ? `
+                    <a
+                        href="receipt-view.php?receipt_number=${encodeURIComponent(p.receipt_number)}"
+                        target="_blank"
+                        class="text-indigo-600 text-xs underline hover:text-indigo-800"
+                    >
+                        View
+                    </a>
+                ` : `
+                    <span class="text-xs text-gray-400 italic">—</span>
+                `}
             </td>
         </tr>
     `).join("");
 }
 
-function renderServices(rows) {
-    if (!rows.length) {
+function renderServices(services, consumables) {
+    if (!services.length) {
         return `
         <tr>
-            <td colspan="5" class="py-4 text-center text-gray-400 italic">
+            <td colspan="4" class="py-4 text-center text-gray-400 italic">
                 No services
             </td>
         </tr>`;
     }
 
-    return rows.map(s => `
+    return services.map(s => {
+        const usedProducts = consumables.filter(
+            c => c.appointment_service_id === s.appointment_service_id
+        );
+
+        return `
+        <!-- SERVICE ROW -->
         <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/40">
             <td class="p-2 font-medium">
                 ${s.service_name}
@@ -543,14 +619,37 @@ function renderServices(rows) {
             <td class="p-2 text-center">
                 ${s.quantity}
             </td>
-            <td class="p-2 text-right font-mono">
-                ₱${Number(s.unit_price).toFixed(2)}
-            </td>
             <td class="p-2 text-right font-mono font-semibold">
                 ₱${Number(s.total_price).toFixed(2)}
             </td>
         </tr>
-    `).join("");
+
+        <!-- CONSUMABLES -->
+        ${usedProducts.length ? `
+        <tr class="bg-gray-50 dark:bg-gray-700/30">
+            <td colspan="4" class="px-4 py-2 text-xs text-gray-600 dark:text-gray-300">
+                <span class="font-semibold">Consumables used:</span>
+                <ul class="mt-1 space-y-1">
+                    ${usedProducts.map(p => `
+                        <li class="flex justify-between">
+                            <span>
+                                ${p.product_name}
+                                — ${p.quantity_used} ${p.unit}
+                                <span class="text-gray-400">
+                                    (₱${Number(p.unit_price).toFixed(2)}/${p.unit})
+                                </span>
+                            </span>
+                            <span class="font-mono">
+                                ₱${Number(p.total_price).toFixed(2)}
+                            </span>
+                        </li>
+                    `).join("")}
+                </ul>
+            </td>
+        </tr>
+        ` : ``}
+        `;
+    }).join("");
 }
 
 function renderProducts(rows) {
@@ -605,6 +704,15 @@ function renderARPayments(rows) {
         </tr>
     `).join("");
 }
+
+arPayMethod.addEventListener("change", () => {
+    const method = arPayMethod.value;
+    arPayRef.classList.toggle(
+        "hidden",
+        method === "cash"
+    );
+});
+
 
 
 /* =====================================================

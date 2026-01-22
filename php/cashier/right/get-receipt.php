@@ -7,7 +7,10 @@ require_once "../../db.php";
 /* ================================
    AUTH
 ================================ */
-if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'cashier') {
+if (
+    !isset($_SESSION['user_id']) ||
+    !in_array($_SESSION['role'], ['cashier', 'admin'])
+) {
     echo json_encode([
         "success" => false,
         "error" => "Unauthorized"

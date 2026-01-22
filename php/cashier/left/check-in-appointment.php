@@ -4,44 +4,71 @@ header("Content-Type: application/json");
 
 require_once "../../db.php";
 
+/* =====================
+   AUTH
+===================== */
 if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'cashier') {
     echo json_encode(["success" => false, "error" => "Unauthorized"]);
     exit;
 }
 
+/* =====================
+   INPUT
+===================== */
 $appointment_id = intval($_POST['appointment_id'] ?? 0);
 if ($appointment_id <= 0) {
     echo json_encode(["success" => false, "error" => "Invalid appointment"]);
     exit;
 }
 
-// Get appointment
+/* =====================
+   FETCH + VALIDATE (DB-SIDE DATE CHECK)
+===================== */
 $stmt = $conn->prepare("
-    SELECT status, appointment_date
+    SELECT
+        status
     FROM appointments
     WHERE id = ?
+      AND appointment_date = CURDATE()
+    LIMIT 1
 ");
 $stmt->bind_param("i", $appointment_id);
 $stmt->execute();
 $app = $stmt->get_result()->fetch_assoc();
 
 if (!$app) {
-    echo json_encode(["success" => false, "error" => "Appointment not found"]);
+    echo json_encode([
+        "success" => false,
+        "error" => "Appointment not found or not scheduled for today"
+    ]);
     exit;
 }
 
-// Safety checks
-if ($app['appointment_date'] !== date('Y-m-d')) {
-    echo json_encode(["success" => false, "error" => "Not today's appointment"]);
+/* =====================
+   STATUS GUARDS
+===================== */
+
+// already checked in
+if ($app['status'] === 'checked_in') {
+    echo json_encode([
+        "success" => false,
+        "error" => "Appointment already checked in"
+    ]);
     exit;
 }
 
+// must be confirmed
 if ($app['status'] !== 'confirmed') {
-    echo json_encode(["success" => false, "error" => "Appointment not confirmable"]);
+    echo json_encode([
+        "success" => false,
+        "error" => "Only confirmed appointments can be checked in"
+    ]);
     exit;
 }
 
-// Check in
+/* =====================
+   CHECK-IN (SAFE UPDATE)
+===================== */
 $stmt = $conn->prepare("
     UPDATE appointments
     SET
@@ -51,29 +78,34 @@ $stmt = $conn->prepare("
         status_updated_at = NOW(),
         status_updated_by = ?
     WHERE id = ?
+      AND status = 'confirmed'
 ");
-$stmt->bind_param(
-    "iii",
-    $_SESSION['user_id'],
-    $_SESSION['user_id'],
-    $appointment_id
-);
 
-if (!$stmt->execute()) {
+$userId = $_SESSION['user_id'];
+$stmt->bind_param("iii", $userId, $userId, $appointment_id);
+$stmt->execute();
+
+/* 🔒 CRITICAL: ensure something actually changed */
+if ($stmt->affected_rows !== 1) {
     echo json_encode([
         "success" => false,
-        "error" => "Failed to check in appointment"
+        "error" => "Check-in failed or appointment already processed"
     ]);
     exit;
 }
 
-/* OPTIONAL BUT HIGHLY RECOMMENDED */
-$stmt = $conn->prepare("
+/* =====================
+   ACTIVITY LOG (NON-BLOCKING)
+===================== */
+$log = $conn->prepare("
     INSERT INTO activity_logs (user_id, action, description)
     VALUES (?, 'appointment_checkin', ?)
 ");
 $desc = "Checked in appointment ID {$appointment_id}";
-$stmt->bind_param("is", $_SESSION['user_id'], $desc);
-$stmt->execute();
+$log->bind_param("is", $userId, $desc);
+$log->execute();
 
+/* =====================
+   DONE
+===================== */
 echo json_encode(["success" => true]);
