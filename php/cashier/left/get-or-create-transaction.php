@@ -59,12 +59,24 @@ $stmt = $conn->prepare("
     SELECT id
     FROM spa_transactions
     WHERE appointment_id = ?
+      AND (shift_id = ? OR shift_id IS NULL)
+    LIMIT 1
 ");
-$stmt->bind_param("i", $appointment_id);
+$stmt->bind_param("ii", $appointment_id, $shift_id);
 $stmt->execute();
 $existing = $stmt->get_result()->fetch_assoc();
 
 if ($existing) {
+
+    // attach shift if missing
+    $stmt = $conn->prepare("
+        UPDATE spa_transactions
+        SET shift_id = ?
+        WHERE id = ? AND shift_id IS NULL
+    ");
+    $stmt->bind_param("ii", $shift_id, $existing['id']);
+    $stmt->execute();
+
     echo json_encode([
         "success" => true,
         "existing" => true,
@@ -72,6 +84,7 @@ if ($existing) {
     ]);
     exit;
 }
+
 // Create transaction
 $txn = 'TXN-' . date('Ymd-His') . '-' . rand(100, 999);
 

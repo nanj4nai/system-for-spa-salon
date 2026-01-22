@@ -23,11 +23,16 @@ $sql = "
         a.source,
         c.full_name AS client_name,
 
-        GROUP_CONCAT(DISTINCT s.name ORDER BY s.name SEPARATOR ', ') AS services,
+        COALESCE(
+            GROUP_CONCAT(DISTINCT s.name ORDER BY s.name SEPARATOR ', '),
+            ''
+        ) AS services,
+
         COUNT(DISTINCT asv.id) AS service_count,
 
-        t.id AS transaction_id,
-        t.payment_status
+        MAX(t.id) AS transaction_id,
+        MAX(t.payment_status) AS payment_status,
+        MAX(t.is_receivable) AS is_receivable  -- 🔥 ADD THIS
 
     FROM appointments a
     JOIN clients c ON c.id = a.client_id
@@ -44,7 +49,13 @@ $sql = "
         a.appointment_date = CURDATE()
         AND a.status IN ('confirmed', 'checked_in')
 
-    GROUP BY a.id
+    GROUP BY
+        a.id,
+        a.start_time,
+        a.status,
+        a.source,
+        c.full_name
+
     ORDER BY
         a.status = 'checked_in' DESC,
         a.start_time ASC

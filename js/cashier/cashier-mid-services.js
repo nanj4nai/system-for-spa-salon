@@ -336,6 +336,8 @@ confirmAddServiceBtn.addEventListener("click", () => {
                 loadTransaction(CashierState.activeTransactionId); // 🔥 FIX
             }
 
+            loadTodayAppointments();
+
             setTimeout(() => {
                 highlightActiveService(highlightId);
             }, 100);
@@ -440,7 +442,7 @@ document.getElementById("confirmRemoveServiceBtn")
                 if (CashierState.activeTransactionId) {
                     loadTransaction(CashierState.activeTransactionId); // 🔥 FIX
                 }
-
+                loadTodayAppointments();
             });
     });
 

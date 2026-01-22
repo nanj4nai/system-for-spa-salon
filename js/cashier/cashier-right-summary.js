@@ -24,7 +24,9 @@ async function loadPaymentMethodSummary(transactionId) {
         // FULLY PAID → LOCKED
         // ======================
         if (
-            (d.payment_status === "paid" || d.status === "locked") &&
+            (d.payment_status === "paid" ||
+                d.status === "locked" ||
+                d.is_receivable == 1) &&
             d.payment_method
         ) {
             box.innerHTML = `
@@ -138,4 +140,43 @@ function formatPaymentMethod(method) {
         case "other": return "Other";
         default: return method;
     }
+}
+
+function renderPaymentReceipts(payments = []) {
+    const box = document.getElementById("paymentReceiptList");
+    if (!box) return;
+
+    if (!payments.length) {
+        box.innerHTML = `
+            <div class="text-xs italic text-gray-400">
+                No payments recorded
+            </div>
+        `;
+        return;
+    }
+
+    box.innerHTML = payments.map(p => `
+        <div class="flex justify-between items-center text-xs border-t pt-1">
+            <div>
+                <div class="font-medium">
+                    ${formatPaymentMethod(p.payment_method)}
+                    · ₱${Number(p.amount).toFixed(2)}
+                </div>
+                <div class="text-[11px] text-gray-400">
+                    ${new Date(p.payment_date).toLocaleString()}
+                </div>
+            </div>
+
+            ${p.receipt_number
+            ? `
+                <button
+                    class="text-emerald-600 hover:underline text-xs"
+                    onclick="openReceiptByNumber('${p.receipt_number}')">
+                    ${p.receipt_number}
+                </button>
+                `
+            : `<span class="text-gray-300 italic">No receipt</span>`
+        }
+        </div>
+    `).join("");
 }

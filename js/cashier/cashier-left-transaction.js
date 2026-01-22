@@ -287,7 +287,10 @@ function renderTransactionBreakdown(data) {
     const serviceBox = document.getElementById("serviceBreakdown");
     const productBox = document.getElementById("productBreakdown");
     const vatBtn = document.getElementById("toggleVatBtn");
-
+    // 🔒 GUARD — UI not mounted
+    if (!serviceBox || !productBox) {
+        return;
+    }
     serviceBox.innerHTML = "";
     productBox.innerHTML = "";
 
@@ -380,52 +383,99 @@ function renderTransactionBreakdown(data) {
         `₱${Number(data.totals.grand_total).toFixed(2)}`;
 }
 
-
-
 function renderPaymentBreakdown(d) {
+    // ⛔ do not render during shift / locked UI
+    if (
+        document.getElementById('closeShiftModal')?.classList.contains('hidden') === false ||
+        document.getElementById('noShiftOverlay')?.classList.contains('hidden') === false
+    ) {
+        return;
+    }
+
+    const amountPaidEl = document.getElementById("amountPaidLabel");
+    const balanceEl = document.getElementById("balanceLabel");
+    const statusLabel = document.getElementById("paymentStatusLabel");
+
+    if (!amountPaidEl || !balanceEl || !statusLabel) return;
 
     const txn = d.transaction;
 
-    const total = Number(d.totals?.grand_total || d.transaction.total_amount || 0);
+    const total = Number(d.totals?.grand_total || txn.total_amount || 0);
     const paid = Number(txn.amount_paid || 0);
-    const change = Number(txn.change_amount || 0);
 
+    const isReceivable = txn.is_receivable == 1;
     const balance = Math.max(0, total - paid);
 
-    // Labels
-    document.getElementById("amountPaidLabel").textContent =
-        `₱${paid.toFixed(2)}`;
+    // ======================
+    // AMOUNTS
+    // ======================
+    amountPaidEl.textContent = `₱${paid.toFixed(2)}`;
+    balanceEl.textContent = `₱${balance.toFixed(2)}`;
 
-    document.getElementById("balanceLabel").textContent =
-        `₱${balance.toFixed(2)}`;
+    const changeEl = document.getElementById("changeLabel");
+    if (changeEl) changeEl.textContent = "₱0.00";
 
-    document.getElementById("changeLabel").textContent =
-        `₱${change.toFixed(2)}`;
-
-    // Status
-    const statusLabel = document.getElementById("paymentStatusLabel");
-
-    statusLabel.textContent = txn.payment_status.toUpperCase();
+    // ======================
+    // STATUS
+    // ======================
 
     statusLabel.className = "font-semibold";
+    statusLabel.classList.remove(
+        "text-purple-600",
+        "text-emerald-600",
+        "text-amber-500",
+        "text-gray-400"
+    );
+    // ======================
+    // RECEIPTS
+    // ======================
+    renderPaymentReceipts(d.payments || []);
 
-    if (txn.payment_status === "paid") {
+    if (isReceivable) {
+        const methodBox = document.getElementById("lockPaymentMethodSummary");
+        if (methodBox) {
+            methodBox.insertAdjacentHTML(
+                "beforeend",
+                `<span class="text-[11px] text-purple-500 italic">
+                Remaining balance recorded as Accounts Receivable
+            </span>`
+            );
+        }
+    }
+    else if (txn.payment_status === "paid") {
+        statusLabel.textContent = "PAID";
         statusLabel.classList.add("text-emerald-600");
     } else if (txn.payment_status === "partial") {
+        statusLabel.textContent = "PARTIAL";
         statusLabel.classList.add("text-amber-500");
     } else {
+        statusLabel.textContent = "UNPAID";
         statusLabel.classList.add("text-gray-400");
     }
 
-    // Reference
-    const refRow = document.getElementById("paymentReferenceRow");
+    // ======================
+    // LABEL ADJUSTMENTS
+    // ======================
+    const balanceText = document.getElementById("balanceTextLabel");
+    if (balanceText) {
+        balanceText.textContent = isReceivable
+            ? "Receivable Balance"
+            : "Balance";
+    }
 
-    if (txn.reference_number && txn.payment_method !== "cash") {
-        document.getElementById("paymentReferenceLabel").textContent =
-            txn.reference_number;
-        refRow.classList.remove("hidden");
-    } else {
-        refRow.classList.add("hidden");
+    // ======================
+    // REFERENCE
+    // ======================
+    const refRow = document.getElementById("paymentReferenceRow");
+    const refLabel = document.getElementById("paymentReferenceLabel");
+
+    if (refRow && refLabel) {
+        if (txn.reference_number && txn.payment_method !== "cash") {
+            refLabel.textContent = txn.reference_number;
+            refRow.classList.remove("hidden");
+        } else {
+            refRow.classList.add("hidden");
+        }
     }
 }
 
@@ -533,8 +583,6 @@ function populateLockSummary(data) {
             methodLabel.classList.add("text-red-500");
         }
     }
-
-
 }
 
 function startLockCountdown(seconds = 5) {

@@ -347,8 +347,10 @@ appointmentsList.addEventListener("click", (e) => {
 
         // 🔥 HARD RESET UI STATE
         CashierState.transactionLocked = false;
+        CashierState.pendingPayment = false;   // ← THIS FIXES IT
         CashierState.selectedPaymentMethod = null;
         CashierState.lockCountdownFinished = false;
+
 
         lockPaymentUI();
         unlockPaymentMethodUI(); // will be re-locked by loadTransaction if needed

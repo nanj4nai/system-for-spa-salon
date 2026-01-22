@@ -43,6 +43,24 @@ $username     = $_SESSION['username'] ?? 'Cashier';
             filter: grayscale(20%);
             pointer-events: none;
         }
+
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+
+            #receiptPaper,
+            #receiptPaper * {
+                visibility: visible;
+            }
+
+            #receiptPaper {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 280px;
+            }
+        }
     </style>
 </head>
 
@@ -315,6 +333,8 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                                     —
                                 </span>
                             </div>
+                            
+                            <div id="paymentReceiptList" class="mt-2 space-y-1"></div>
                         </div>
 
                         <!-- TOTAL -->
@@ -341,108 +361,8 @@ $username     = $_SESSION['username'] ?? 'Cashier';
 
     <!-- MODALS & TOASTS -->
     <?php include 'left-modals.php'; ?>
+    <?php include 'mid-modals.php'; ?>
 
-    <!-- ADD SERVICE MODAL -->
-    <div id="serviceModal"
-        class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md">
-            <h3 class="text-lg font-semibold mb-4">Add Service</h3>
-
-            <div class="space-y-4">
-                <!-- Service -->
-                <div>
-                    <label class="text-xs text-gray-500">Service</label>
-                    <select id="serviceSelect"
-                        class="w-full px-3 py-2 rounded-lg border dark:bg-gray-700">
-                        <option value="">Select service</option>
-                    </select>
-                </div>
-
-                <!-- Variant (hidden by default) -->
-                <div id="variantWrapper" class="hidden">
-                    <label class="text-xs text-gray-500">Variant</label>
-                    <select id="variantSelect"
-                        class="w-full px-3 py-2 rounded-lg border dark:bg-gray-700">
-                    </select>
-                </div>
-                <!-- Service Products Preview -->
-                <div id="serviceProductsPreview"
-                    class="hidden rounded-lg border bg-gray-50 dark:bg-gray-700 p-3 text-xs space-y-1">
-                </div>
-                <!-- Staff -->
-                <div>
-                    <label class="text-xs text-gray-500">Staff</label>
-                    <select id="staffSelect"
-                        class="w-full px-3 py-2 rounded-lg border dark:bg-gray-700">
-                        <option value="">Select staff</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="flex justify-end gap-2 mt-6">
-                <button id="cancelServiceBtn"
-                    class="px-4 py-2 text-sm rounded bg-gray-200 dark:bg-gray-600">
-                    Cancel
-                </button>
-                <button id="confirmAddServiceBtn"
-                    class="px-4 py-2 text-sm rounded bg-blue-600 text-white">
-                    Add Service
-                </button>
-            </div>
-        </div>
-    </div>
-
-    <!-- ADD EXTRA PRODUCT MODAL -->
-    <div id="extraProductModal"
-        class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-md">
-            <h3 class="text-lg font-semibold mb-4">Add Extra Product</h3>
-
-            <div class="space-y-4">
-                <!-- Product -->
-                <div>
-                    <label class="text-xs text-gray-500">Product</label>
-                    <select id="extraProductSelect"
-                        class="w-full px-3 py-2 rounded-lg border dark:bg-gray-700">
-                    </select>
-                </div>
-
-                <!-- Quantity wrapper -->
-                <div id="extraQtyWrapper">
-                    <label id="extraQtyLabel" class="text-xs text-gray-500">Quantity</label>
-                    <input id="extraProductQty"
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value="1"
-                        class="w-full px-3 py-2 rounded-lg border dark:bg-gray-700">
-                </div>
-
-                <!-- Info -->
-                <div id="extraProductInfo"
-                    class="text-xs text-gray-500 hidden">
-                </div>
-                <p class="text-[11px] text-gray-400 mt-1">
-                    ! Some products are disabled because they are already included in a service
-                </p>
-                <p id="extraProductHint"
-                    class="text-[11px] text-gray-400 mt-1">
-                    Add a service first to enable extra products
-                </p>
-            </div>
-
-            <div class="flex justify-end gap-2 mt-6">
-                <button id="cancelExtraProductBtn"
-                    class="px-4 py-2 text-sm rounded bg-gray-200 dark:bg-gray-600">
-                    Cancel
-                </button>
-                <button id="confirmExtraProductBtn"
-                    class="px-4 py-2 text-sm rounded bg-emerald-600 text-white">
-                    Add Product
-                </button>
-            </div>
-        </div>
-    </div>
     <!-- LOCK TRANSACTION MODAL -->
     <div id="lockTransactionModal"
         class="fixed inset-0 z-50 hidden items-center justify-center
@@ -576,82 +496,6 @@ $username     = $_SESSION['username'] ?? 'Cashier';
         </div>
     </div>
 
-    <!-- REMOVE EXTRA PRODUCT MODAL -->
-    <div id="removeExtraProductModal"
-        class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm">
-
-            <h3 class="text-lg font-semibold mb-2 text-red-600">
-                Remove Product
-            </h3>
-
-            <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                You are about to remove:
-            </p>
-
-            <div class="mb-3 px-3 py-2 rounded bg-gray-100 dark:bg-gray-700">
-                <span id="removeExtraProductName"
-                    class="font-medium text-sm">
-                    —
-                </span>
-            </div>
-
-            <p class="text-xs text-red-500 mb-4">
-                This cannot be undone. The product will be removed from the transaction.
-            </p>
-
-            <div class="flex justify-end gap-2">
-                <button id="cancelRemoveExtraProductBtn"
-                    class="px-4 py-2 text-sm rounded bg-gray-200 dark:bg-gray-600">
-                    Cancel
-                </button>
-
-                <button id="confirmRemoveExtraProductBtn"
-                    class="px-4 py-2 text-sm rounded bg-red-600 text-white">
-                    Remove
-                </button>
-            </div>
-        </div>
-    </div>
-
-
-    <!-- REMOVE SERVICE MODAL -->
-    <div id="removeServiceModal"
-        class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
-        <div class="bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm">
-
-            <h3 class="text-lg font-semibold mb-2 text-red-600">
-                Remove Service
-            </h3>
-
-            <p class="text-sm text-gray-600 dark:text-gray-400 mb-2">
-                You are about to remove:
-            </p>
-
-            <div class="mb-3 px-3 py-2 rounded bg-gray-100 dark:bg-gray-700">
-                <span id="removeServiceName"
-                    class="font-medium text-sm">
-                    —
-                </span>
-            </div>
-
-            <p class="text-xs text-red-500 mb-4">
-                This cannot be undone. All related product usage will be removed.
-            </p>
-
-            <div class="flex justify-end gap-2">
-                <button id="cancelRemoveServiceBtn"
-                    class="px-4 py-2 text-sm rounded bg-gray-200 dark:bg-gray-600">
-                    Cancel
-                </button>
-
-                <button id="confirmRemoveServiceBtn"
-                    class="px-4 py-2 text-sm rounded bg-red-600 text-white">
-                    Remove
-                </button>
-            </div>
-        </div>
-    </div>
     <!-- PAYMENT MODAL -->
     <div id="paymentModal"
         class="fixed inset-0 z-50 hidden items-center justify-center bg-black/50">
@@ -721,6 +565,20 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                        dark:bg-gray-700"
                     placeholder="0.00">
             </div>
+            <div id="receivableOption" class="hidden mt-3">
+                <label class="flex items-center gap-2 text-sm">
+                    <input type="checkbox" id="markAsReceivable" />
+                    <span>
+                        Mark remaining balance as
+                        <strong>Account Receivable</strong>
+                    </span>
+                </label>
+
+                <p class="text-xs text-gray-400 mt-1">
+                    Client will pay the remaining balance later.
+                </p>
+            </div>
+
 
             <!-- CHANGE -->
             <div class="text-sm mb-4">
@@ -758,7 +616,7 @@ $username     = $_SESSION['username'] ?? 'Cashier';
            bg-black/50 backdrop-blur-sm">
 
         <div class="bg-white dark:bg-gray-800 rounded-2xl
-        w-full max-w-sm shadow-xl p-6">
+        w-full max-w-lg shadow-xl p-6">
 
             <h3 class="text-lg font-semibold mb-1">
                 Close Shift
@@ -766,6 +624,44 @@ $username     = $_SESSION['username'] ?? 'Cashier';
             <p class="text-xs text-gray-500 mb-4">
                 Enter closing cash and optional remarks
             </p>
+            <!-- SHIFT SUMMARY -->
+            <div class="mb-4 border rounded-lg p-3 bg-gray-50 dark:bg-gray-700 text-sm">
+                <div class="flex justify-between mb-1">
+                    <span class="text-gray-500">Transactions</span>
+                    <span id="sumTransactions">0</span>
+                </div>
+
+                <div class="flex justify-between mb-1">
+                    <span class="text-gray-500">Gross Sales</span>
+                    <span id="sumGross">₱0.00</span>
+                </div>
+
+                <div class="flex justify-between mb-1">
+                    <span class="text-gray-500">Total Paid</span>
+                    <span id="sumPaid">₱0.00</span>
+                </div>
+                <hr class="my-2">
+
+                <div class="flex justify-between mb-1">
+                    <span class="text-gray-500">Expected Cash</span>
+                    <span id="sumExpectedCash">₱0.00</span>
+                </div>
+
+                <div class="flex justify-between mb-1">
+                    <span class="text-gray-500">Declared Cash</span>
+                    <span id="sumDeclaredCash">₱0.00</span>
+                </div>
+
+                <div class="flex justify-between font-medium">
+                    <span class="text-gray-600">Variance</span>
+                    <span id="sumVariance" class="text-gray-600">₱0.00</span>
+                </div>
+
+
+                <hr class="my-2">
+
+                <div id="paymentBreakdowned" class="space-y-1 text-xs text-gray-600"></div>
+            </div>
 
             <!-- Closing Cash -->
             <div class="mb-3">
@@ -814,6 +710,126 @@ $username     = $_SESSION['username'] ?? 'Cashier';
         </div>
     </div>
 
+    <!-- FINAL CONFIRM CLOSE SHIFT MODAL -->
+    <div id="finalConfirmShiftModal"
+        class="fixed inset-0 z-50 hidden flex items-center justify-center
+            bg-black/50 backdrop-blur-sm">
+
+        <div class="bg-white dark:bg-gray-800 rounded-2xl
+                w-full max-w-md shadow-xl p-6">
+
+            <h3 class="text-lg font-semibold mb-2">
+                Confirm Shift Submission
+            </h3>
+
+            <p class="text-sm text-gray-500 mb-4">
+                Please review the final amounts before submitting for approval.
+            </p>
+
+            <div class="border rounded-lg p-3 bg-gray-50 dark:bg-gray-700 text-sm mb-4">
+                <div class="flex justify-between mb-1">
+                    <span>Expected Cash</span>
+                    <span id="finalExpectedCash">₱0.00</span>
+                </div>
+
+                <div class="flex justify-between mb-1">
+                    <span>Declared Cash</span>
+                    <span id="finalDeclaredCash">₱0.00</span>
+                </div>
+
+                <div class="flex justify-between font-semibold">
+                    <span>Variance</span>
+                    <span id="finalVariance">₱0.00</span>
+                </div>
+            </div>
+
+            <p class="text-xs text-red-500 mb-4">
+                This action will lock the shift. You won’t be able to edit
+                transactions unless the admin rejects this request.
+            </p>
+
+            <div class="flex justify-end gap-2">
+                <button
+                    id="cancelFinalConfirmBtn"
+                    class="px-4 py-2 text-sm rounded
+                       bg-gray-200 dark:bg-gray-600">
+                    Go Back
+                </button>
+
+                <button
+                    id="confirmFinalSubmitBtn"
+                    class="px-4 py-2 text-sm rounded
+                       bg-red-600 text-white">
+                    Confirm & Submit
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- THERMAL RECEIPT MODAL -->
+    <div id="receiptModal"
+        class="fixed inset-0 z-50 hidden flex items-center justify-center bg-black/50">
+
+        <div id="receiptPaper"
+            class="bg-white text-black p-4 text-xs"
+            style="width: 280px; font-family: monospace;">
+
+            <div class="text-center mb-2">
+                <div class="font-bold">MY WELLNESS SPA</div>
+                <div>Official Receipt</div>
+            </div>
+
+            <hr>
+
+            <div class="mt-2">
+                <div>Receipt #: <span id="rReceiptNo"></span></div>
+                <div>Date: <span id="rDate"></span></div>
+                <div>Cashier: <span id="rCashier"></span></div>
+            </div>
+
+            <hr class="my-2">
+
+            <div id="rItems"></div>
+
+            <hr class="my-2">
+
+            <div class="flex justify-between">
+                <span>TOTAL</span>
+                <span id="rTotal"></span>
+            </div>
+
+            <div class="flex justify-between">
+                <span>PAID</span>
+                <span id="rPaid"></span>
+            </div>
+
+            <div class="flex justify-between">
+                <span>BALANCE</span>
+                <span id="rBalance"></span>
+            </div>
+
+            <div class="mt-2">
+                Method: <span id="rMethod"></span>
+            </div>
+
+            <hr class="my-2">
+
+            <div class="text-center text-[10px]">
+                Thank you for your visit!
+            </div>
+
+            <div class="flex gap-2 mt-3 print:hidden">
+                <button onclick="printReceipt()"
+                    class="flex-1 bg-black text-white py-1 rounded">
+                    Print
+                </button>
+                <button onclick="closeReceiptModal()"
+                    class="flex-1 bg-gray-300 py-1 rounded">
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
 
     <!-- Toast -->
     <div id="toast"

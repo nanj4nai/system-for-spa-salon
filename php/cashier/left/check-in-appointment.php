@@ -44,12 +44,36 @@ if ($app['status'] !== 'confirmed') {
 // Check in
 $stmt = $conn->prepare("
     UPDATE appointments
-    SET status = 'checked_in',
+    SET
+        status = 'checked_in',
         checked_in_at = NOW(),
-        checked_in_by = ?
+        checked_in_by = ?,
+        status_updated_at = NOW(),
+        status_updated_by = ?
     WHERE id = ?
 ");
-$stmt->bind_param("ii", $_SESSION['user_id'], $appointment_id);
+$stmt->bind_param(
+    "iii",
+    $_SESSION['user_id'],
+    $_SESSION['user_id'],
+    $appointment_id
+);
+
+if (!$stmt->execute()) {
+    echo json_encode([
+        "success" => false,
+        "error" => "Failed to check in appointment"
+    ]);
+    exit;
+}
+
+/* OPTIONAL BUT HIGHLY RECOMMENDED */
+$stmt = $conn->prepare("
+    INSERT INTO activity_logs (user_id, action, description)
+    VALUES (?, 'appointment_checkin', ?)
+");
+$desc = "Checked in appointment ID {$appointment_id}";
+$stmt->bind_param("is", $_SESSION['user_id'], $desc);
 $stmt->execute();
 
 echo json_encode(["success" => true]);

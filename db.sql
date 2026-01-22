@@ -558,3 +558,8 @@ CREATE TABLE ar_payments (
 
     FOREIGN KEY (receivable_id) REFERENCES accounts_receivable(id)
 );
+ALTER TABLE accounts_receivable
+ADD UNIQUE KEY uniq_ar_transaction (transaction_id);
+
+ALTER TABLE payments
+ADD UNIQUE KEY uniq_receipt_number (receipt_number);

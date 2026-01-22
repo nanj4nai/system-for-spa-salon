@@ -24,7 +24,11 @@ function resetTransactionUIState() {
 
     // Reset service cards
     document.querySelectorAll(".service-card").forEach(card => {
-        card.classList.remove("card-locked", "pointer-events-none");
+        card.classList.remove(
+            "card-locked",
+            "pointer-events-none",
+            "opacity-50"
+        );
     });
 
 

@@ -159,6 +159,25 @@ $total_paid = (float)($pay['total_paid'] ?? 0);
 $change_amount = max(0, $total_paid - $grand_total);
 
 /* =========================
+   PAYMENTS (DETAILED LIST)
+========================= */
+$stmt = $conn->prepare("
+    SELECT
+        id,
+        amount,
+        payment_method,
+        receipt_number,
+        payment_date
+    FROM payments
+    WHERE transaction_id = ?
+    ORDER BY payment_date ASC
+");
+$stmt->bind_param("i", $transaction_id);
+$stmt->execute();
+$payments = $stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+
+
+/* =========================
    PAYMENT STATUS
 ========================= */
 if ($total_paid <= 0) {
@@ -186,6 +205,7 @@ echo json_encode([
     "transaction" => $transaction,
     "services" => $services,
     "products" => $products,
+    "payments" => $payments,
     "totals" => [
         "services_total" => round($services_total, 2),
         "consumables_total" => round($product_usage_total, 2),

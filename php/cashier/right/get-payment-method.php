@@ -15,9 +15,14 @@ if ($transaction_id <= 0) {
     exit;
 }
 
-// Get transaction payment status
+/* ================================
+   LOAD TRANSACTION STATE
+================================ */
 $stmt = $conn->prepare("
-    SELECT payment_status
+    SELECT
+        payment_status,
+        status,
+        is_receivable
     FROM spa_transactions
     WHERE id = ?
 ");
@@ -30,12 +35,14 @@ if (!$tx) {
     exit;
 }
 
-// Get latest payment (if any)
+/* ================================
+   LOAD LAST PAYMENT METHOD
+================================ */
 $stmt = $conn->prepare("
     SELECT payment_method
     FROM payments
     WHERE transaction_id = ?
-    ORDER BY payment_date DESC
+    ORDER BY payment_date DESC, id DESC
     LIMIT 1
 ");
 $stmt->bind_param("i", $transaction_id);
@@ -47,8 +54,13 @@ if ($row = $res->fetch_assoc()) {
     $payment_method = $row['payment_method'];
 }
 
+/* ================================
+   RESPONSE
+================================ */
 echo json_encode([
-    "success" => true,
+    "success"        => true,
     "payment_status" => $tx['payment_status'], // unpaid | partial | paid
+    "status"        => $tx['status'],         // editing | locked
+    "is_receivable" => (int)$tx['is_receivable'],
     "payment_method" => $payment_method
 ]);
