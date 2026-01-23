@@ -81,11 +81,13 @@ $role = $_SESSION["role"];
                 <a href="inventory.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-green-200 dark:hover:bg-green-800 transition">
                     <i data-lucide="package" class="w-5 h-5"></i> Inventory
                 </a>
-            <?php endif; ?>
-
-            <?php if ($role === "admin"): ?>
                 <a href="staff.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-yellow-200 dark:hover:bg-yellow-700 transition">
                     <i data-lucide="badge-check" class="w-5 h-5"></i> Employees
+                </a>
+                <a href="admin-shift-approvals.php"
+                    class="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-200 dark:hover:bg-indigo-800 transition">
+                    <i data-lucide="clipboard-check" class="w-5 h-5"></i>
+                    Shift Approvals
                 </a>
             <?php endif; ?>
             <a href="reports.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-orange-200 dark:hover:bg-orange-800 transition">
@@ -141,6 +143,27 @@ $role = $_SESSION["role"];
 
         <!-- FILTERS -->
         <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow mb-6">
+            <!-- QUICK DATE TOGGLE -->
+            <div class="flex gap-2 mb-4">
+                <button type="button"
+                    class="quick-filter btn-secondary px-4 py-2 rounded-lg"
+                    data-mode="today">
+                    Today
+                </button>
+
+                <button type="button"
+                    class="quick-filter btn-secondary px-4 py-2 rounded-lg"
+                    data-mode="upcoming">
+                    Upcoming
+                </button>
+
+                <button type="button"
+                    class="quick-filter btn-secondary px-4 py-2 rounded-lg"
+                    data-mode="all">
+                    All
+                </button>
+            </div>
+
             <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
                 <div>
                     <label class="text-sm mb-1 block">Appointment Date</label>

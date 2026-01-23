@@ -102,10 +102,13 @@ $categories = $conn->query("SELECT * FROM service_categories ORDER BY name ASC")
                 <a href="inventory.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-green-200 dark:hover:bg-green-800 transition">
                     <i data-lucide="package" class="w-5 h-5"></i> Inventory
                 </a>
-            <?php endif; ?>
-            <?php if ($role === "admin"): ?>
                 <a href="staff.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-yellow-200 dark:hover:bg-yellow-700 transition">
                     <i data-lucide="badge-check" class="w-5 h-5"></i> Employees
+                </a>
+                <a href="admin-shift-approvals.php"
+                    class="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-200 dark:hover:bg-indigo-800 transition">
+                    <i data-lucide="clipboard-check" class="w-5 h-5"></i>
+                    Shift Approvals
                 </a>
             <?php endif; ?>
             <a href="reports.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-orange-200 dark:hover:bg-orange-800 transition">
@@ -247,6 +250,16 @@ $categories = $conn->query("SELECT * FROM service_categories ORDER BY name ASC")
                             <label for="description" class="block mb-1">Description / Notes</label>
                             <textarea name="description" id="description" rows="3" class="w-full px-3 py-2 border rounded dark:bg-gray-700 dark:text-white" placeholder="Optional notes or details about the service"></textarea>
                         </div>
+                        <div class="mb-2 p-3 rounded-lg bg-blue-50 dark:bg-blue-900/30">
+                            <h4 class="font-semibold text-sm text-blue-800 dark:text-blue-200">
+                                Service Products (Actual Usage)
+                            </h4>
+                            <p class="text-xs text-blue-700 dark:text-blue-300 mt-1">
+                                These products will be <strong>deducted from inventory</strong> when the service is performed.
+                                Used by the cashier during checkout.
+                            </p>
+                        </div>
+
                         <!-- PRODUCTS -->
                         <div id="productContainer" class="mb-3" data-role="service-products">
                             <p id="noProductsText" class="text-sm text-gray-500">
@@ -255,6 +268,17 @@ $categories = $conn->query("SELECT * FROM service_categories ORDER BY name ASC")
                         </div>
 
                         <button type="button" id="addProductBtn" class="px-3 py-1 mb-3 bg-blue-500 text-white rounded">Add Product</button>
+
+                        <!-- ADVANCED PRICING TOGGLE -->
+                        <div class="mb-3">
+                            <button
+                                type="button"
+                                id="toggleAdvancedPricing"
+                                class="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-300">
+                                <span id="advancedPricingIcon">▶</span>
+                                Advanced Pricing (Estimates & Margins)
+                            </button>
+                        </div>
 
                         <!-- VARIANTS -->
                         <div id="variantContainer" class="mb-3" data-role="service-variants"></div>

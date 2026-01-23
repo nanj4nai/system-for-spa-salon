@@ -76,23 +76,19 @@ $role = $_SESSION["role"];
                 <a href="inventory.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-green-200 dark:hover:bg-green-800 transition">
                     <i data-lucide="package" class="w-5 h-5"></i> Inventory
                 </a>
-            <?php endif; ?>
-            <?php if ($role === "admin"): ?>
                 <a href="staff.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-yellow-200 dark:hover:bg-yellow-700 transition">
                     <i data-lucide="badge-check" class="w-5 h-5"></i> Employees
                 </a>
-            <?php endif; ?>
-
-            <a href="reports.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-orange-200 dark:hover:bg-orange-800 transition">
-                <i data-lucide="bar-chart-3" class="w-5 h-5"></i> Reports
-            </a>
-            <?php if ($role === "admin"): ?>
                 <a href="admin-shift-approvals.php"
                     class="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-200 dark:hover:bg-indigo-800 transition">
                     <i data-lucide="clipboard-check" class="w-5 h-5"></i>
                     Shift Approvals
                 </a>
             <?php endif; ?>
+
+            <a href="reports.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-orange-200 dark:hover:bg-orange-800 transition">
+                <i data-lucide="bar-chart-3" class="w-5 h-5"></i> Reports
+            </a>
 
             <?php if ($role === "admin"): ?>
                 <a href="settings.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-300 dark:hover:bg-gray-700 transition">

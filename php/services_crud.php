@@ -35,10 +35,10 @@ try {
             $checkStmt->execute();
             $checkStmt->store_result();
             if ($checkStmt->num_rows > 0) {
-                echo json_encode(["success" => false, "message" => "A service with this name already exists in this category."]);
                 $checkStmt->close();
-                exit;
+                throw new Exception("A service with this name already exists in this category.");
             }
+
             $checkStmt->close();
 
             // Insert or update service
@@ -88,9 +88,9 @@ try {
 
                 // Prevent duplicates in the same form submission
                 if (in_array(strtolower($v_name), $seenVariants)) {
-                    echo json_encode(["success" => false, "message" => "Duplicate variant name '{$v_name}' in form submission."]);
-                    exit;
+                    throw new Exception("Duplicate variant name '{$v_name}' in form submission.");
                 }
+
                 $seenVariants[] = strtolower($v_name);
 
                 $v_id = $variant_ids[$i] ?? null;
@@ -102,10 +102,10 @@ try {
                     $checkStmt->execute();
                     $checkStmt->store_result();
                     if ($checkStmt->num_rows > 0) {
-                        echo json_encode(["success" => false, "message" => "A variant with name '{$v_name}' already exists for this service."]);
                         $checkStmt->close();
-                        exit;
+                        throw new Exception("A variant with name '{$v_name}' already exists for this service.");
                     }
+
                     $checkStmt->close();
                 }
 
@@ -126,6 +126,84 @@ try {
                     $stmt->close();
                 }
             }
+            // ================= VARIANT ESTIMATES =================
+            $variant_estimates = json_decode($_POST['variant_estimates'] ?? '{}', true);
+
+            if (!empty($variant_estimates)) {
+
+                // Clear old estimates for this service
+                $stmt = $conn->prepare("
+                    DELETE svpe
+                    FROM service_variant_product_estimates svpe
+                    JOIN service_variants sv ON sv.id = svpe.service_variant_id
+                    WHERE sv.service_id = ?
+                ");
+                $stmt->bind_param("i", $service_id);
+                $stmt->execute();
+                $stmt->close();
+
+                $insertStmt = $conn->prepare("
+                    INSERT INTO service_variant_product_estimates
+                        (service_variant_id, product_id, estimated_quantity, unit)
+                    VALUES (?, ?, ?, ?)
+                ");
+
+                $checkVariantStmt = $conn->prepare("
+                    SELECT id FROM service_variants
+                    WHERE id = ? AND service_id = ?
+                ");
+
+                foreach ($variant_estimates as $variantId => $products) {
+
+                    $variantId = intval($variantId);
+                    if ($variantId <= 0) continue;
+
+                    // Ensure variant belongs to this service
+                    $checkVariantStmt->bind_param("ii", $variantId, $service_id);
+                    $checkVariantStmt->execute();
+                    $checkVariantStmt->store_result();
+
+                    if ($checkVariantStmt->num_rows === 0) {
+                        throw new Exception("Invalid variant reference for estimates.");
+                    }
+
+                    foreach ($products as $p) {
+
+                        $product_id = intval($p['product_id'] ?? 0);
+                        $qty = floatval($p['quantity'] ?? 0);
+                        $unit = $p['unit'] ?? 'pcs';
+
+                        if ($product_id <= 0 || $qty <= 0) continue;
+
+                        // Validate product
+                        $prodStmt = $conn->prepare("
+                            SELECT product_type FROM products WHERE id=?
+                        ");
+                        $prodStmt->bind_param("i", $product_id);
+                        $prodStmt->execute();
+                        $product = $prodStmt->get_result()->fetch_assoc();
+                        $prodStmt->close();
+
+                        if (!$product) continue;
+
+                        if ($product['product_type'] === 'consumable' && $qty <= 0) {
+                            throw new Exception("Consumable product estimates must be greater than zero.");
+                        }
+
+                        $insertStmt->bind_param(
+                            "iids",
+                            $variantId,
+                            $product_id,
+                            $qty,
+                            $unit
+                        );
+                        $insertStmt->execute();
+                    }
+                }
+
+                $insertStmt->close();
+                $checkVariantStmt->close();
+            }
 
             // ===== HANDLE SERVICE PRODUCTS =====
             $service_products = json_decode($_POST['service_products'] ?? '[]', true);
@@ -141,9 +219,9 @@ try {
             // Insert updated service products
             if (!empty($service_products)) {
                 $stmt = $conn->prepare("
-        INSERT INTO service_products (service_id, product_id, quantity)
-        VALUES (?, ?, ?)
-    ");
+                    INSERT INTO service_products (service_id, product_id, quantity)
+                    VALUES (?, ?, ?)
+                ");
 
                 foreach ($service_products as $sp) {
                     $product_id = intval($sp['product_id']);
@@ -153,10 +231,10 @@ try {
 
                     // Fetch product behavior
                     $prodStmt = $conn->prepare("
-            SELECT product_type, stock 
-            FROM products 
-            WHERE id=?
-        ");
+                        SELECT product_type, stock 
+                        FROM products 
+                        WHERE id=?
+                    ");
                     $prodStmt->bind_param("i", $product_id);
                     $prodStmt->execute();
                     $product = $prodStmt->get_result()->fetch_assoc();
@@ -166,28 +244,21 @@ try {
 
                     // ---- VALIDATION RULES ----
                     if ($product['product_type'] === 'reusable' && floor($qty) != $qty) {
-                        echo json_encode([
-                            "success" => false,
-                            "message" => "Reusable products must use whole quantities."
-                        ]);
-                        exit;
+                        throw new Exception("Reusable products must use whole quantities.");
                     }
 
                     if ($product['product_type'] === 'one_time' && $qty != 1) {
-                        echo json_encode([
-                            "success" => false,
-                            "message" => "One-time products must have quantity of 1."
-                        ]);
-                        exit;
+                        throw new Exception("One-time products must have quantity of 1.");
+                    }
+
+                    if ($product['product_type'] === 'consumable' && $qty <= 0) {
+                        throw new Exception("Consumable products must have quantity greater than zero.");
                     }
 
                     if ($product['product_type'] === 'consumable' && $qty > $product['stock']) {
-                        echo json_encode([
-                            "success" => false,
-                            "message" => "Not enough stock for one of the consumable products."
-                        ]);
-                        exit;
+                        throw new Exception("Not enough stock for one of the consumable products.");
                     }
+
                     // ---- INSERT ----
                     $stmt->bind_param("iid", $service_id, $product_id, $qty);
                     $stmt->execute();
@@ -224,11 +295,6 @@ try {
             break;
     }
     $conn->commit();
-    $response = [
-        "success" => true,
-        "message" => "Service saved successfully!",
-        "id" => $service_id
-    ];
 } catch (Exception $e) {
     $conn->rollback();
     $response = [

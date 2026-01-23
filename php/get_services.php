@@ -7,19 +7,23 @@ if (!isset($_SESSION["user_id"])) {
 
 require_once "db.php";
 
-// Get categories
+/* =========================
+   CATEGORIES
+========================= */
 $categories = $conn->query("
-    SELECT * FROM service_categories 
+    SELECT * FROM service_categories
     ORDER BY created_at DESC
 ")->fetch_all(MYSQLI_ASSOC);
 
-// Get ALL products (for modal selector)
+/* =========================
+   ALL PRODUCTS (MODALS)
+========================= */
 $allProducts = $conn->query("
     SELECT 
         id,
         name,
         stock,
-        price, 
+        price,
         unit,
         product_type,
         unit_per_item
@@ -27,9 +31,11 @@ $allProducts = $conn->query("
     ORDER BY name ASC
 ")->fetch_all(MYSQLI_ASSOC);
 
-// Get services
+/* =========================
+   SERVICES
+========================= */
 $services_result = $conn->query("
-    SELECT * FROM services 
+    SELECT * FROM services
     ORDER BY created_at DESC
 ");
 
@@ -37,10 +43,13 @@ $services = [];
 
 while ($service = $services_result->fetch_assoc()) {
 
-    // Get variants
+    /* =========================
+       VARIANTS
+    ========================= */
     $variant_stmt = $conn->prepare("
-        SELECT * FROM service_variants 
-        WHERE service_id=? 
+        SELECT *
+        FROM service_variants
+        WHERE service_id = ?
         ORDER BY created_at ASC
     ");
     $variant_stmt->bind_param("i", $service['id']);
@@ -48,9 +57,36 @@ while ($service = $services_result->fetch_assoc()) {
     $variants = $variant_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $variant_stmt->close();
 
-    // Get service products
+    /* =========================
+       VARIANT PRODUCT ESTIMATES (NEW)
+    ========================= */
+    foreach ($variants as &$variant) {
+        $estimate_stmt = $conn->prepare("
+            SELECT
+                svpe.product_id,
+                svpe.estimated_quantity,
+                svpe.unit,
+                p.name,
+                p.price,
+                p.unit_per_item,
+                p.product_type
+            FROM service_variant_product_estimates svpe
+            JOIN products p ON p.id = svpe.product_id
+            WHERE svpe.service_variant_id = ?
+        ");
+        $estimate_stmt->bind_param("i", $variant['id']);
+        $estimate_stmt->execute();
+        $variant['estimates'] =
+            $estimate_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+        $estimate_stmt->close();
+    }
+    unset($variant); // important (PHP reference safety)
+
+    /* =========================
+       SERVICE PRODUCTS (BASE)
+    ========================= */
     $product_stmt = $conn->prepare("
-        SELECT 
+        SELECT
             sp.product_id,
             sp.quantity,
             p.name,
@@ -65,15 +101,22 @@ while ($service = $services_result->fetch_assoc()) {
     ");
     $product_stmt->bind_param("i", $service['id']);
     $product_stmt->execute();
-    $serviceProducts = $product_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
+    $serviceProducts =
+        $product_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $product_stmt->close();
 
+    /* =========================
+       ASSEMBLE SERVICE
+    ========================= */
     $service['variants'] = $variants;
     $service['products'] = $serviceProducts;
 
     $services[] = $service;
 }
 
+/* =========================
+   RESPONSE
+========================= */
 echo json_encode([
     "success" => true,
     "categories" => $categories,

@@ -7,7 +7,6 @@ document.addEventListener("DOMContentLoaded", () => {
     let allAppointments = [];
     let activeFilters = {};
 
-
     const appointmentModal = document.getElementById("appointmentModal");
     const appointmentDate = document.getElementById("appointmentDate");
     const startTime = document.getElementById("startTime");
@@ -35,6 +34,36 @@ document.addEventListener("DOMContentLoaded", () => {
 
     addAppointmentBtn.addEventListener("click", openModal);
     cancelAppointmentBtn.addEventListener("click", closeModal);
+
+    const getTodayISO = () => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, "0");
+        const day = String(now.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    };
+
+    const getTomorrowISO = () => {
+        const d = new Date();
+        d.setDate(d.getDate() + 1);
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    };
+
+    const setActiveQuickFilter = (mode) => {
+        document.querySelectorAll(".quick-filter").forEach(btn => {
+            btn.classList.remove("bg-rose-500", "text-white");
+            btn.classList.add("btn-secondary");
+        });
+
+        const activeBtn = document.querySelector(`.quick-filter[data-mode="${mode}"]`);
+        if (activeBtn) {
+            activeBtn.classList.remove("btn-secondary");
+            activeBtn.classList.add("bg-rose-500", "text-white");
+        }
+    };
 
     // --- TOAST FUNCTION ---
     const showToast = (message, type = "info", duration = 3000) => {
@@ -91,6 +120,85 @@ document.addEventListener("DOMContentLoaded", () => {
                 showToast("You can now add more services!", "success");
             }
         }
+    };
+
+    const statusClass = (status) => {
+        switch (status) {
+            case "completed":
+                return "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300";
+            case "checked_in":
+                return "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300";
+            case "confirmed":
+                return "bg-purple-100 text-purple-700";
+            case "cancelled":
+            case "no_show":
+                return "bg-gray-200 text-gray-600";
+            default:
+                return "bg-rose-100 text-rose-700";
+        }
+    };
+    const totalClass = (row) => {
+        if (row.transaction_id && row.payment_status === "paid") {
+            return "text-green-600 dark:text-green-400";
+        }
+
+        if (row.transaction_id && row.has_receivable) {
+            return "text-orange-600 dark:text-orange-400";
+        }
+
+        return "text-gray-800 dark:text-gray-200";
+    };
+
+    const computeAppointmentTotal = (row) => {
+        // 🔥 SOURCE OF TRUTH
+        if (row.transaction_id && row.total_amount != null) {
+            return parseFloat(row.total_amount);
+        }
+
+        // ❗ Estimate only (no transaction yet)
+        let estimate = 0;
+        row.services.forEach(s => {
+            estimate += parseFloat(s.price || 0);
+        });
+
+        return estimate;
+    };
+
+
+    const paymentBadge = (row) => {
+        if (!row.transaction_id) return "";
+
+        if (row.payment_status === "paid") {
+            return `
+            <div class="text-xs font-semibold text-green-700 bg-green-100
+                        dark:bg-green-900 dark:text-green-300
+                        px-2 py-0.5 rounded inline-block mt-1">
+                PAID
+            </div>
+        `;
+        }
+
+        if (row.has_receivable) {
+            return `
+            <div class="text-xs font-semibold text-orange-700 bg-orange-100
+                        dark:bg-orange-900 dark:text-orange-300
+                        px-2 py-0.5 rounded inline-block mt-1">
+                RECEIVABLE ₱${parseFloat(row.balance_due || 0).toFixed(2)}
+            </div>
+        `;
+        }
+
+        if (row.payment_status === "partial") {
+            return `
+            <div class="text-xs font-semibold text-yellow-700 bg-yellow-100
+                        dark:bg-yellow-900 dark:text-yellow-300
+                        px-2 py-0.5 rounded inline-block mt-1">
+                PARTIAL ₱${parseFloat(row.balance_due || 0).toFixed(2)}
+            </div>
+        `;
+        }
+
+        return "";
     };
 
     // --- Staff dropdown ---
@@ -326,12 +434,60 @@ document.addEventListener("DOMContentLoaded", () => {
             "#filterDate, #filterStaff, #filterCustomer, #filterService, #filterStatus, #filterId"
         ).forEach(el => el.value = "");
 
-        loadAppointments();
-        showToast("Filters reset", "info", 2000);
+        const today = getTodayISO();
+        activeFilters = { date_from: today };
+        loadAppointments(activeFilters);
+
+        showToast("Showing today & upcoming appointments", "info", 2000);
     });
+
+    document.querySelectorAll(".quick-filter").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const mode = btn.dataset.mode;
+            const today = getTodayISO();
+
+            // Reset form inputs visually
+            document.querySelectorAll(
+                "#filterDate, #filterStaff, #filterCustomer, #filterService, #filterStatus, #filterId"
+            ).forEach(el => el.value = "");
+
+            if (mode === "today") {
+                document.getElementById("filterDate").value = today;
+                activeFilters = { date: today };
+            }
+
+            if (mode === "upcoming") {
+                const tomorrow = getTomorrowISO();
+                activeFilters = { date_from: tomorrow };
+            }
+
+            if (mode === "all") {
+                activeFilters = {};
+            }
+
+            setActiveQuickFilter(mode);
+            loadAppointments(activeFilters);
+
+            showToast(
+                mode === "today"
+                    ? "Showing today's appointments"
+                    : mode === "upcoming"
+                        ? "Showing upcoming appointments"
+                        : "Showing all appointments",
+                "info",
+                2000
+            );
+        });
+    });
+
+
     // --- Format date like: December 19, 2025 ---
     const formatDateLong = (dateStr) => {
+        if (!dateStr) return "—";
+
         const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return "—";
+
         return new Intl.DateTimeFormat("en-US", {
             month: "long",
             day: "numeric",
@@ -339,9 +495,23 @@ document.addEventListener("DOMContentLoaded", () => {
         }).format(date);
     };
 
+
     // --- Format time like: 11:30 AM ---
     const formatTime = (timeStr) => {
-        const date = new Date(`1970-01-01T${timeStr}`);
+        if (!timeStr || typeof timeStr !== "string") {
+            return "—";
+        }
+
+        // Normalize: ensure HH:mm:ss
+        const normalized = timeStr.length === 5 ? `${timeStr}:00` : timeStr;
+
+        const date = new Date(`1970-01-01T${normalized}`);
+
+        if (isNaN(date.getTime())) {
+            console.warn("Invalid time value:", timeStr);
+            return "—";
+        }
+
         return new Intl.DateTimeFormat("en-US", {
             hour: "numeric",
             minute: "2-digit",
@@ -349,9 +519,14 @@ document.addEventListener("DOMContentLoaded", () => {
         }).format(date);
     };
 
+
     // --- Format datetime like: December 19, 2025, 11:30 AM ---
     const formatDateTimeLong = (dateTimeStr) => {
+        if (!dateTimeStr) return "—";
+
         const date = new Date(dateTimeStr);
+        if (isNaN(date.getTime())) return "—";
+
         return new Intl.DateTimeFormat("en-US", {
             month: "long",
             day: "numeric",
@@ -361,7 +536,6 @@ document.addEventListener("DOMContentLoaded", () => {
             hour12: true
         }).format(date);
     };
-
 
     // --- Load appointments ---
     const loadAppointments = async (filters = {}) => {
@@ -373,8 +547,19 @@ document.addEventListener("DOMContentLoaded", () => {
         });
 
         const res = await fetch("php/appointment.php?" + params.toString());
-        allAppointments = await res.json();
+        let data = await res.json();
 
+        // 🔥 DEFAULT: today + future
+        if (filters.date_from) {
+            const from = new Date(filters.date_from);
+            data = data.filter(a => {
+                const d = new Date(a.appointment_date + "T00:00:00");
+
+                return d >= from;
+            });
+        }
+
+        allAppointments = data;
         currentPage = 1;
         renderAppointments();
     };
@@ -409,23 +594,24 @@ document.addEventListener("DOMContentLoaded", () => {
         const pageData = allAppointments.slice(startIndex, endIndex);
 
         pageData.forEach(row => {
-            let total = 0;
+            const total = computeAppointmentTotal(row);
 
             const servicesHtml = row.services.map(s => {
-                total += parseFloat(s.price || 0);
                 return `
-                <div class="text-sm">
-                    <span class="font-medium">${s.service_name}</span>
-                    <span class="text-xs opacity-70"> (${s.staff_name})</span>
-                </div>
-            `;
+                    <div class="text-sm">
+                        <span class="font-medium">${s.service_name}</span>
+                        <span class="text-xs opacity-70"> (${s.staff_name})</span>
+                    </div>
+                `;
             }).join("");
+
 
             /* =========================
                DESKTOP TABLE ROW
             ========================= */
             const tr = document.createElement("tr");
             tr.className = "hover:bg-gray-50 dark:hover:bg-gray-700";
+            const statusDisabled = row.transaction_id ? "disabled opacity-60 cursor-not-allowed" : "";
 
             tr.innerHTML = `
             <td class="p-4 text-center">
@@ -446,18 +632,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
             <td class="p-4">${row.client_name}</td>
             <td class="p-4">${servicesHtml}</td>
-            <td class="p-4 font-semibold text-rose-600">₱${total.toFixed(2)}</td>
-
             <td class="p-4">
-                <select class="status-select w-full px-2 py-1 rounded bg-rose-100 text-rose-700"
-                        data-id="${row.id}">
+                <div class="font-semibold ${totalClass(row)}">
+
+                    ₱${total.toFixed(2)}
+                </div>
+                ${paymentBadge(row)}
+            </td>
+            <td class="p-4">
+                <select class="status-select w-full px-2 py-1 rounded
+                            ${statusClass(row.status)} ${statusDisabled}"
+                        data-id="${row.id}"
+                        ${row.transaction_id ? "disabled" : ""}>
                     ${["pending", "confirmed", "completed", "cancelled", "no_show"]
-                    .map(s => `<option value="${s}" ${s === row.status ? "selected" : ""}>
-                            ${s.replace("_", " ")}
-                        </option>`).join("")}
+                    .map(s => `
+                            <option value="${s}" ${s === row.status ? "selected" : ""}>
+                                ${s.replace("_", " ")}
+                            </option>
+                        `).join("")}
                 </select>
             </td>
-
             <td class="p-4 text-xs opacity-70">
                 ${formatDateTimeLong(row.created_at)}
             </td>
@@ -480,12 +674,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     <p class="text-xs opacity-70">Client</p>
                     <p class="font-semibold">${row.client_name}</p>
                 </div>
-                <span class="px-3 py-1 rounded-full text-xs font-medium
-                    ${row.status === "completed"
-                    ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300"
-                    : "bg-rose-100 text-rose-700 dark:bg-rose-900 dark:text-rose-300"}">
+                <span class="px-3 py-1 rounded-full text-xs font-medium ${statusClass(row.status)}">
                     ${row.status.replace("_", " ")}
                 </span>
+                ${paymentBadge(row)}
             </div>
 
             <div class="text-sm">
@@ -499,7 +691,7 @@ document.addEventListener("DOMContentLoaded", () => {
             </div>
 
             <div class="flex justify-between items-center pt-2">
-                <span class="font-bold text-rose-600">₱${total.toFixed(2)}</span>
+                <span class="font-bold ${totalClass(row)}">₱${total.toFixed(2)}</span>
                 <button class="px-4 py-2 rounded-xl bg-rose-500 text-white text-sm font-medium"
                         data-id="${row.id}">
                     View Details
@@ -524,14 +716,77 @@ document.addEventListener("DOMContentLoaded", () => {
         updatePaginationButtons();
     };
 
+    const renderPricingBreakdown = (appointment) => {
+        const pb = appointment.pricing_breakdown;
+        if (!pb) return "";
+
+        const serviceTotal = appointment.services.reduce(
+            (sum, s) => sum + parseFloat(s.price || 0),
+            0
+        );
+
+        const consumableTotal = appointment.services.reduce(
+            (sum, s) =>
+                sum +
+                (s.products || []).reduce(
+                    (pSum, p) => pSum + parseFloat(p.cost || 0),
+                    0
+                ),
+            0
+        );
+
+        const extraProductTotal = (appointment.extra_products || []).reduce(
+            (sum, p) => sum + parseFloat(p.total_price || 0),
+            0
+        );
+
+        return `
+        <div class="mt-6 border-t dark:border-gray-700 pt-4 space-y-2 text-sm">
+            <div class="flex justify-between">
+                <span>Service</span>
+                <span>₱${serviceTotal.toFixed(2)}</span>
+            </div>
+
+            ${consumableTotal > 0 ? `
+                <div class="flex justify-between text-gray-500">
+                    <span>+ Consumables</span>
+                    <span>₱${consumableTotal.toFixed(2)}</span>
+                </div>
+            ` : ""}
+
+            ${extraProductTotal > 0 ? `
+                <div class="flex justify-between text-gray-500">
+                    <span>+ Extra Products</span>
+                    <span>₱${extraProductTotal.toFixed(2)}</span>
+                </div>
+            ` : ""}
+
+            <div class="flex justify-between font-medium border-t pt-2">
+                <span>Subtotal</span>
+                <span>₱${pb.subtotal.toFixed(2)}</span>
+            </div>
+
+            <div class="flex justify-between text-gray-500">
+                <span>VAT (${pb.vat_rate}%)</span>
+                <span>₱${pb.vat_amount.toFixed(2)}</span>
+            </div>
+
+            <div class="flex justify-between text-lg font-bold border-t pt-3">
+                <span>TOTAL</span>
+                <span>₱${pb.grand_total.toFixed(2)}</span>
+            </div>
+        </div>
+    `;
+    };
+
+
     const detailsModal = document.getElementById("appointmentDetailsModal");
     const detailsContent = document.getElementById("detailsContent");
     const openDetailsModal = (appointment) => {
-        let total = 0;
+        const total = computeAppointmentTotal(appointment);
 
         const servicesHtml = appointment.services.map(s => {
             const price = parseFloat(s.price || 0);
-            total += price;
 
             const variant = s.variant_name
                 ? `<p class="text-sm text-gray-500 dark:text-gray-400">
@@ -540,31 +795,45 @@ document.addEventListener("DOMContentLoaded", () => {
                 : "";
 
             const products = s.products?.length
-                ? `<p class="text-sm text-gray-500 dark:text-gray-400">
-                    Products:
-                    <span class="font-medium">
-                        ${s.products.map(p => `${p.name} ×${p.qty}`).join(", ")}
-                    </span>
-                </p>`
+                ? `
+                        <div class="mt-2">
+                            <p class="text-xs uppercase tracking-wide text-gray-400">
+                                Consumables Used
+                            </p>
+                            <ul class="mt-1 space-y-1 text-sm text-gray-600 dark:text-gray-300">
+                                ${s.products.map(p => `
+                                    <li class="flex justify-between">
+                                        <span>${p.name}</span>
+                                        <span class="text-gray-400">
+                                            ${appointment.usage_mode === "actual"
+                        ? `${p.qty} ${p.unit}`
+                        : `x ${p.qty ?? 1}`
+                    }
+                                        </span>
+                                    </li>
+                                `).join("")}
+                            </ul>
+                        </div>
+                    `
                 : "";
 
             return `
-            <div class="rounded-2xl border dark:border-gray-700 p-5 bg-gray-50 dark:bg-gray-900 space-y-2">
-                <div class="flex justify-between items-start">
-                    <h5 class="text-lg font-semibold">${s.service_name}</h5>
-                    <span class="text-base font-bold text-rose-600">
-                        ₱${price.toFixed(2)}
-                    </span>
+                <div class="rounded-2xl border dark:border-gray-700 p-5 bg-gray-50 dark:bg-gray-900 space-y-2">
+                    <div class="flex justify-between items-start">
+                        <h5 class="text-lg font-semibold">${s.service_name}</h5>
+                        <span class="text-base font-bold text-gray-700 dark:text-gray-200">
+                            ₱${price.toFixed(2)}
+                        </span>
+                    </div>
+
+                    ${variant}
+                    ${products}
+
+                    <p class="text-sm">
+                        Staff:
+                        <span class="font-medium">${s.staff_name}</span>
+                    </p>
                 </div>
-
-                ${variant}
-                ${products}
-
-                <p class="text-sm">
-                    Staff:
-                    <span class="font-medium">${s.staff_name}</span>
-                </p>
-            </div>
             `;
         }).join("");
 
@@ -603,8 +872,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
 
                 <div>
-                    <p class="text-sm opacity-70">Total</p>
-                    <p class="text-xl font-bold text-rose-600">
+                    <p class="text-sm opacity-70">Total (from cashier)</p>
+                    <p class="text-xl font-bold ${totalClass(appointment)}">
                         ₱${total.toFixed(2)}
                     </p>
                 </div>
@@ -619,12 +888,25 @@ document.addEventListener("DOMContentLoaded", () => {
             ${servicesHtml}
         </div>
 
-        <!-- GRAND TOTAL -->
-        <div class="mt-6 flex justify-end">
-            <div class="bg-rose-600 text-white px-6 py-3 rounded-2xl text-xl font-bold shadow">
-                Total: ₱${total.toFixed(2)}
+        <!-- PRICING BREAKDOWN -->
+        ${appointment.pricing_breakdown ? `
+            <div class="mt-6 bg-gray-50 dark:bg-gray-900 p-5 rounded-2xl border dark:border-gray-700">
+                <h4 class="text-sm uppercase tracking-wide text-gray-400 mb-3">
+                    Pricing Breakdown
+                </h4>
+                ${renderPricingBreakdown(appointment)}
             </div>
-        </div>
+        ` : `
+            <div class="mt-6 flex justify-end">
+                <div class="px-6 py-3 rounded-2xl text-xl font-bold shadow
+                            ${appointment.payment_status === "paid"
+                ? "bg-green-600 text-white"
+                : "bg-gray-700 text-white"}">
+                    Total: ₱${total.toFixed(2)}
+            </div>
+            </div>
+        `}
+
         `;
 
         detailsModal.classList.remove("hidden");
@@ -675,6 +957,18 @@ document.addEventListener("DOMContentLoaded", () => {
         });
         showToast(`Status updated to "${status}"`, "success");
     };
+
+    document.addEventListener("change", async (e) => {
+        if (!e.target.classList.contains("status-select")) return;
+
+        const id = e.target.dataset.id;
+        const status = e.target.value;
+
+        await updateStatus(id, status);
+        loadAppointments(activeFilters);
+    });
+
+
 
     // --- Save appointment with new client fields ---
     const saveAppointment = async () => {
@@ -791,12 +1085,22 @@ document.addEventListener("DOMContentLoaded", () => {
 
     saveAppointmentBtn.addEventListener("click", saveAppointment);
 
-    // --- INITIAL LOAD ---
+    // --- INITIAL LOAD (TODAY + FUTURE ONLY) ---
     loadAllServices().then(() => {
         loadFilterDropdowns();
-        loadAppointments();
+
+        const today = getTodayISO();
+
+        // Show today's date in the date picker
+        document.getElementById("filterDate").value = today;
+
+        activeFilters = { date_from: today };
+        loadAppointments(activeFilters);
+
+        setActiveQuickFilter("upcoming");
         updateServiceDropdowns();
     });
+
 });
 
 const loadFilterDropdowns = async () => {

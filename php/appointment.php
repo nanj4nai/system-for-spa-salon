@@ -36,12 +36,6 @@ if ($method === "GET") {
         $types .= "s";
     }
 
-    if (!empty($_GET["status"])) {
-        $conditions[] = "a.status = ?";
-        $params[] = $_GET["status"];
-        $types .= "s";
-    }
-
     if (!empty($_GET["customer"])) {
         $conditions[] = "c.full_name LIKE ?";
         $params[] = "%" . $_GET["customer"] . "%";
@@ -54,7 +48,10 @@ if ($method === "GET") {
             WHERE aps.appointment_id = a.id
             AND aps.employee_id = ?
         )";
+        $params[] = $_GET["staff"];
+        $types .= "i";
     }
+
 
     if (!empty($_GET["service"])) {
         $conditions[] = "EXISTS (
@@ -67,22 +64,32 @@ if ($method === "GET") {
     }
 
     $where = $conditions ? "WHERE " . implode(" AND ", $conditions) : "";
-
     $sql = "
         SELECT DISTINCT
             a.id,
             a.appointment_date,
             a.start_time,
             a.end_time,
-            a.status,
+            a.status AS raw_status,
+            a.checked_in_at,
             a.created_at,
-            a.notes,
-            c.full_name AS client_name
+            c.full_name AS client_name,
+
+            t.id AS transaction_id,
+            t.payment_status,
+            t.has_receivable,
+            t.balance_due,
+            t.total_amount,
+            t.status AS transaction_status
+
         FROM appointments a
         JOIN clients c ON a.client_id = c.id
+        LEFT JOIN spa_transactions t ON t.appointment_id = a.id
+
         $where
         ORDER BY a.appointment_date DESC, a.start_time DESC
     ";
+
 
     $stmt = $conn->prepare($sql);
     if ($params) {
@@ -93,9 +100,45 @@ if ($method === "GET") {
 
     $appointments = [];
     while ($row = $result->fetch_assoc()) {
+        $row["payment_status"] = $row["payment_status"] ?? "unpaid";
+        $row["has_receivable"] = (int)($row["has_receivable"] ?? 0);
+        $row["transaction_status"] = $row["transaction_status"] ?? "editing";
+
+
+        // --- Derive real status ---
+        if (in_array($row["raw_status"], ["cancelled", "no_show"])) {
+            // Appointment explicitly cancelled or no-show
+            $row["status"] = $row["raw_status"];
+        } elseif (!empty($row["transaction_id"])) {
+
+            if ($row["transaction_status"] === "cancelled") {
+                $row["status"] = "cancelled";
+            } elseif ($row["payment_status"] === "paid") {
+                $row["status"] = "completed";
+            } else {
+                // partial / receivable / editing
+                $row["status"] = "checked_in";
+            }
+        } else {
+            // No transaction yet
+            $row["status"] = $row["checked_in_at"]
+                ? "checked_in"
+                : $row["raw_status"];
+        }
+        if (!empty($_GET["status"]) && $row["status"] !== $_GET["status"]) {
+            continue;
+        }
+
+        $row["usage_mode"] = !empty($row["transaction_id"])
+            ? "actual"
+            : "planned";
+
         $appointments[$row["id"]] = $row;
         $appointments[$row["id"]]["services"] = [];
+        $appointments[$row["id"]]["services_map"] = [];
+        $appointments[$row["id"]]["extra_products"] = [];
     }
+
 
     // --- Load services + staff (SAFE IN QUERY) ---
     if ($appointments) {
@@ -103,27 +146,23 @@ if ($method === "GET") {
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
 
         $sql2 = "
-           SELECT
-                aps.appointment_id,
+        SELECT
+            aps.id AS appointment_service_id,
+            aps.appointment_id,
+            aps.service_id,
 
-                s.name AS service_name,
-                s.base_price,
+            s.name AS service_name,
+            s.base_price,
 
-                v.name AS variant_name,
-                v.price AS variant_price,
-                v.duration_minutes,
+            v.name AS variant_name,
+            v.price AS variant_price,
 
-                e.full_name AS staff_name,
-
-                p.name AS product_name,
-                sp.quantity AS product_qty
-            FROM appointment_services aps
-            JOIN services s ON aps.service_id = s.id
-            LEFT JOIN service_variants v ON aps.variant_id = v.id
-            JOIN employees e ON aps.employee_id = e.id
-            LEFT JOIN service_products sp ON sp.service_id = s.id
-            LEFT JOIN products p ON p.id = sp.product_id
-            WHERE aps.appointment_id IN ($placeholders)
+            e.full_name AS staff_name
+        FROM appointment_services aps
+        JOIN services s ON aps.service_id = s.id
+        LEFT JOIN service_variants v ON aps.variant_id = v.id
+        JOIN employees e ON aps.employee_id = e.id
+        WHERE aps.appointment_id IN ($placeholders)
         ";
 
         $stmt2 = $conn->prepare($sql2);
@@ -142,29 +181,181 @@ if ($method === "GET") {
 
             if (!isset($appointments[$aid]["services_map"][$key])) {
                 $appointments[$aid]["services_map"][$key] = [
-                    "service_name"  => $row2["service_name"],
-                    "variant_name"  => $row2["variant_name"],
-                    "price"         => $row2["variant_price"] ?? $row2["base_price"],
-                    "duration"      => $row2["duration_minutes"],
-                    "staff_name"    => $row2["staff_name"],
-                    "products"      => []
-                ];
-            }
-
-            if ($row2["product_name"]) {
-                $appointments[$aid]["services_map"][$key]["products"][] = [
-                    "name" => $row2["product_name"],
-                    "qty"  => $row2["product_qty"]
+                    "appointment_service_id" => $row2["appointment_service_id"],
+                    "service_id" => $row2["service_id"],
+                    "service_name" => $row2["service_name"],
+                    "variant_name" => $row2["variant_name"],
+                    "staff_name" => $row2["staff_name"],
+                    "price" => $row2["variant_price"] ?? $row2["base_price"],
+                    "products" => []
                 ];
             }
         }
+        // --- Load DEFAULT products for PLANNED services ---
+        $plannedServiceIds = [];
+
+        foreach ($appointments as $a) {
+            if ($a["usage_mode"] === "planned") {
+                foreach ($a["services_map"] as $svc) {
+                    $plannedServiceIds[] = $svc["service_id"];
+                }
+            }
+        }
+
+        $plannedServiceIds = array_unique($plannedServiceIds);
+
+        if ($plannedServiceIds) {
+            $ph = implode(',', array_fill(0, count($plannedServiceIds), '?'));
+
+            $sqlPlanned = "
+                SELECT
+                    sp.service_id,
+                    p.name,
+                    sp.quantity,
+                    p.unit
+                FROM service_products sp
+                JOIN products p ON p.id = sp.product_id
+                WHERE sp.service_id IN ($ph)
+            ";
+
+            $stmtPlanned = $conn->prepare($sqlPlanned);
+            $stmtPlanned->bind_param(str_repeat("i", count($plannedServiceIds)), ...$plannedServiceIds);
+            $stmtPlanned->execute();
+            $resPlanned = $stmtPlanned->get_result();
+
+            while ($r = $resPlanned->fetch_assoc()) {
+                foreach ($appointments as &$a) {
+                    if ($a["usage_mode"] !== "planned") continue;
+
+                    foreach ($a["services_map"] as &$svc) {
+                        if ($svc["service_id"] == $r["service_id"]) {
+                            $svc["products"][] = [
+                                "name" => $r["name"],
+                                "qty"  => (float)$r["quantity"],
+                                "unit" => $r["unit"],
+                                "cost" => null // planned → no cost yet
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+
+        $actualServiceIds = [];
+
+        foreach ($appointments as $a) {
+            if ($a["usage_mode"] === "actual") {
+                foreach ($a["services_map"] ?? [] as $svc) {
+                    $actualServiceIds[] = $svc["appointment_service_id"];
+                }
+            }
+        }
+
+        if ($actualServiceIds) {
+            $ph = implode(',', array_fill(0, count($actualServiceIds), '?'));
+
+            $sql3 = "
+            SELECT
+                asp.appointment_service_id,
+                p.name,
+                p.price,
+                p.unit_per_item,
+                asp.quantity_used,
+                asp.unit
+            FROM appointment_service_products asp
+            JOIN products p ON p.id = asp.product_id
+            WHERE asp.appointment_service_id IN ($ph)
+            ";
+
+
+            $stmt3 = $conn->prepare($sql3);
+            $stmt3->bind_param(str_repeat("i", count($actualServiceIds)), ...$actualServiceIds);
+            $stmt3->execute();
+            $res3 = $stmt3->get_result();
+            while ($r = $res3->fetch_assoc()) {
+
+                $cost = 0;
+                if ((float)$r["unit_per_item"] > 0) {
+                    $cost = ($r["quantity_used"] / $r["unit_per_item"]) * $r["price"];
+                }
+
+                foreach ($appointments as &$a) {
+                    if ($a["usage_mode"] !== "actual") continue;
+
+                    foreach ($a["services_map"] as &$svc) {
+                        if ($svc["appointment_service_id"] == $r["appointment_service_id"]) {
+                            $svc["products"][] = [
+                                "name" => $r["name"],
+                                "qty"  => (float)$r["quantity_used"],
+                                "unit" => $r["unit"],
+                                "cost" => round($cost, 2)
+                            ];
+                        }
+                    }
+                }
+            }
+        }
+        $sqlExtra = "
+    SELECT
+        aep.appointment_id,
+        p.name,
+        aep.quantity,
+        aep.unit_price,
+        aep.total_price
+    FROM appointment_extra_products aep
+    JOIN products p ON p.id = aep.product_id
+    WHERE aep.appointment_id IN ($placeholders)
+";
+        $stmtExtra = $conn->prepare($sqlExtra);
+        $stmtExtra->bind_param(str_repeat("i", count($ids)), ...$ids);
+        $stmtExtra->execute();
+        $resExtra = $stmtExtra->get_result();
+
+        while ($r = $resExtra->fetch_assoc()) {
+            $appointments[$r["appointment_id"]]["extra_products"][] = [
+                "name" => $r["name"],
+                "qty"  => (float)$r["quantity"],
+                "unit_price" => (float)$r["unit_price"],
+                "total_price" => (float)$r["total_price"],
+            ];
+        }
+    }
+    foreach ($appointments as &$a) {
+        $a["services"] = array_values($a["services_map"]);
+        unset($a["services_map"]);
+    }
+    $vatRate = 0.12;
+    $vatRow = $conn->query("SELECT vat_rate FROM settings LIMIT 1")->fetch_assoc();
+    if ($vatRow) {
+        $vatRate = ((float)$vatRow["vat_rate"]) / 100;
     }
 
     foreach ($appointments as &$a) {
-        if (isset($a["services_map"])) {
-            $a["services"] = array_values($a["services_map"]);
-            unset($a["services_map"]);
+
+        if (!$a["transaction_id"]) continue;
+
+        $subtotal = 0;
+
+        foreach ($a["services"] as $s) {
+            $subtotal += (float)$s["price"];
+
+            foreach ($s["products"] ?? [] as $p) {
+                $subtotal += (float)$p["cost"];
+            }
         }
+
+        foreach ($a["extra_products"] as $ep) {
+            $subtotal += (float)$ep["total_price"];
+        }
+
+        $vat = $subtotal * $vatRate;
+
+        $a["pricing_breakdown"] = [
+            "subtotal" => round($subtotal, 2),
+            "vat_rate" => $vatRate * 100,
+            "vat_amount" => round($vat, 2),
+            "grand_total" => round($subtotal + $vat, 2)
+        ];
     }
 
     echo json_encode(array_values($appointments));
@@ -179,7 +370,7 @@ if ($method === "GET") {
 if ($method === "POST") {
 
     $data = json_decode(file_get_contents("php://input"), true);
-    $allowed = ['pending', 'confirmed', 'completed', 'cancelled', 'no_show'];
+    $allowed = ['pending', 'confirmed', 'cancelled', 'no_show'];
 
     if (
         empty($data["id"]) ||
@@ -190,6 +381,27 @@ if ($method === "POST") {
         echo json_encode(["success" => false]);
         exit;
     }
+    // Check if appointment already has a transaction
+    $check = $conn->prepare("
+    SELECT COUNT(*) 
+    FROM spa_transactions 
+    WHERE appointment_id = ?
+");
+    $check->bind_param("i", $data["id"]);
+    $check->execute();
+    $check->bind_result($hasTransaction);
+    $check->fetch();
+    $check->close();
+
+    if ($hasTransaction > 0) {
+        http_response_code(409);
+        echo json_encode([
+            "success" => false,
+            "message" => "Cannot manually change status after transaction exists"
+        ]);
+        exit;
+    }
+
 
     $stmt = $conn->prepare("
         UPDATE appointments

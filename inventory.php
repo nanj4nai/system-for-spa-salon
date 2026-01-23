@@ -103,13 +103,16 @@ $role = $_SESSION["role"];
             </a>
 
             <?php if ($role === "admin"): ?>
-                <a href="inventory.php" class="flex items-center gap-3 p-3 rounded-xl bg-green-200 dark:bg-green-700 transition">
+                <a href="inventory.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-green-200 dark:hover:bg-green-800 transition">
                     <i data-lucide="package" class="w-5 h-5"></i> Inventory
                 </a>
-            <?php endif; ?>
-            <?php if ($role === "admin"): ?>
                 <a href="staff.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-yellow-200 dark:hover:bg-yellow-700 transition">
                     <i data-lucide="badge-check" class="w-5 h-5"></i> Employees
+                </a>
+                <a href="admin-shift-approvals.php"
+                    class="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-200 dark:hover:bg-indigo-800 transition">
+                    <i data-lucide="clipboard-check" class="w-5 h-5"></i>
+                    Shift Approvals
                 </a>
             <?php endif; ?>
 

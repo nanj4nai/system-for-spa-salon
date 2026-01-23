@@ -567,3 +567,29 @@ ALTER TABLE payments
 ADD COLUMN remarks TEXT NULL AFTER receipt_number;
 ALTER TABLE payments
 ADD COLUMN reference_number VARCHAR(100) NULL;
+
+
+ALTER TABLE spa_transactions
+ADD UNIQUE KEY uniq_transaction_per_appointment (appointment_id);
+
+CREATE TABLE service_variant_product_estimates (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+
+    service_variant_id INT NOT NULL,
+    product_id INT NOT NULL,
+
+    estimated_quantity DECIMAL(10,2) NOT NULL,
+    unit ENUM('ml','mg','pcs') NOT NULL,
+
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (service_variant_id)
+        REFERENCES service_variants(id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (product_id)
+        REFERENCES products(id)
+        ON DELETE CASCADE,
+
+    UNIQUE (service_variant_id, product_id)
+);

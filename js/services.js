@@ -1,5 +1,22 @@
 document.addEventListener("DOMContentLoaded", () => {
     let deletedVariantIds = [];
+    let variantEstimates = {};
+
+    // ==== DATA ARRAYS ====
+    let categories = [];
+    let services = [];
+    // ==== PAGINATION STATE ====
+    let currentPage = 1;
+    const rowsPerPage = 8; // change to 5 / 10 / 15 if you want
+    let filteredServices = [];
+    let serviceSearchTerm = "";
+    let selectedCategory = "";
+    let categoryPage = 1;
+    const categoriesPerPage = 6;
+    let products = [];
+    let advancedPricingVisible = false;
+
+
 
     const categoryIdInput = document.getElementById("category_id_input");
     const confirmModal = document.getElementById("confirmModal");
@@ -89,6 +106,63 @@ document.addEventListener("DOMContentLoaded", () => {
             setTimeout(() => toast.remove(), 500);
         }, duration);
     };
+    const calculateVariantEstimateCost = (estimates = []) => {
+        return estimates.reduce((total, e) => {
+            const product = products.find(p => p.id == e.product_id);
+            if (!product) return total;
+
+            const price = parseFloat(product.price || 0);
+            const qty = parseFloat(e.quantity || 0);
+            const unitPerItem = parseFloat(product.unit_per_item || 1);
+
+            if (product.product_type === "consumable") {
+                return total + (qty / unitPerItem) * price;
+            }
+
+            if (product.product_type === "one_time") {
+                return total + price;
+            }
+
+            return total;
+        }, 0);
+    };
+
+    const renderVariantEstimateSummary = (variant) => {
+        if (!variant.estimates || !variant.estimates.length) return "";
+
+        const cost = calculateVariantEstimateCost(
+            variant.estimates.map(e => ({
+                product_id: e.product_id,
+                quantity: e.estimated_quantity
+            }))
+        );
+
+        const margin = variant.price > 0
+            ? (((variant.price - cost) / variant.price) * 100).toFixed(1)
+            : 0;
+
+        return `
+        <div class="mt-1 ml-3 text-xs text-yellow-700 dark:text-yellow-300">
+            <div>
+                Pricing Estimate – Product Cost: ₱${cost.toFixed(2)}
+            </div>
+            <div>
+                Est. margin: ${margin}%
+            </div>
+        </div>
+    `;
+    };
+
+    const toggleAdvancedPricing = () => {
+        advancedPricingVisible = !advancedPricingVisible;
+
+        document.querySelectorAll(".advanced-pricing").forEach(el => {
+            el.classList.toggle("hidden", !advancedPricingVisible);
+        });
+
+        const icon = document.getElementById("advancedPricingIcon");
+        if (icon) icon.textContent = advancedPricingVisible ? "▼" : "▶";
+    };
 
     // ===== Service Delete (Mobile/Desktop) =====
     const handleServiceDelete = async (id, index) => {
@@ -173,7 +247,7 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     // Update category dropdown in service modal dynamically
     const updateServiceCategoryOptions = () => {
-        const categorySelect = document.getElementById("serviceForm").category_id;
+        const categorySelect = document.getElementById("category_id");
         if (!categorySelect) return;
 
         // preserve currently selected value
@@ -189,23 +263,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
         categorySelect.value = String(selected); // restore selected value
     };
-
-
-
-    // ==== DATA ARRAYS ====
-    let categories = [];
-    let services = [];
-    // ==== PAGINATION STATE ====
-    let currentPage = 1;
-    const rowsPerPage = 8; // change to 5 / 10 / 15 if you want
-    let filteredServices = [];
-    let serviceSearchTerm = "";
-    let selectedCategory = "";
-    let categoryPage = 1;
-    const categoriesPerPage = 6;
-    let products = [];
-
-
 
     // ==== FETCH INITIAL DATA ====
     const fetchData = async () => {
@@ -296,7 +353,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         return `
         <div class="mt-1 text-xs text-gray-600 dark:text-gray-300">
-            <strong>Uses:</strong><br>
+            <strong>Uses: </strong><br>
             ${products.map(p => {
             let qtyLabel = p.quantity;
 
@@ -377,8 +434,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 <td class="px-4 py-2">
                     ${service.variants.length
                     ? service.variants
-                        .map(v => `${v.name} (${v.duration_minutes} mins) ₱${parseFloat(v.price).toFixed(2)}`)
-                        .join("<br>")
+                        .map(v => `
+                            <div class="mb-1">
+                                <div>
+                                    ${v.name} (${v.duration_minutes} mins)
+                                    ₱${parseFloat(v.price).toFixed(2)}
+                                </div>
+                                <div class="advanced-pricing hidden">
+                                    ${renderVariantEstimateSummary(v)}
+                                </div>
+                            </div>
+                        `)
+                        .join("")
                     : `₱${parseFloat(service.base_price || 0).toFixed(2)}`
                 }
 
@@ -386,10 +453,13 @@ document.addEventListener("DOMContentLoaded", () => {
 
                     ${service.products?.length
                     ? `
-                            <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                                <strong>Est. Product Cost / Service:</strong>
-                                ₱${calculateServiceProductCost(service.products).toFixed(2)}
-                            </div>
+                                <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                    <strong>Estimated Inventory Cost (reference):</strong>
+                                    ₱${calculateServiceProductCost(service.products).toFixed(2)}
+                                    <div class="italic text-[11px] opacity-70 mt-0.5">
+                                        Based on current product prices • Actual usage is recorded by the cashier
+                                    </div>
+                                </div>
                         `
                     : ""
                 }
@@ -445,8 +515,18 @@ document.addEventListener("DOMContentLoaded", () => {
                 <strong>Price / Variants:</strong><br>
                 ${service.variants.length
                     ? service.variants
-                        .map(v => `${v.name} (${v.duration_minutes} mins) ₱${parseFloat(v.price).toFixed(2)}`)
-                        .join("<br>")
+                        .map(v => `
+                            <div class="mb-2">
+                                <div>
+                                    ${v.name} (${v.duration_minutes} mins)
+                                    ₱${parseFloat(v.price).toFixed(2)}
+                                </div>
+                                <div class="advanced-pricing hidden">
+                                    ${renderVariantEstimateSummary(v)}
+                                </div>
+                            </div>
+                        `)
+                        .join("")
                     : `₱${parseFloat(service.base_price || 0).toFixed(2)}`
                 }
 
@@ -578,6 +658,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const addProductBtn = document.getElementById("addProductBtn");
 
     const createProductRow = (productId = "", qty = 1) => {
+        document.getElementById("noProductsText")?.remove();
 
         // Prevent adding more rows than available products
         const selectedCount = getSelectedProductIds().length;
@@ -598,7 +679,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const unitPerItem = p.unit_per_item || 1;
                 const price = parseFloat(p.price || 0);
 
-                meta = `${p.stock} ${unit} available • ₱${price.toFixed(2)} / ${unitPerItem} ${unit}`;
+                meta = `${p.stock} ${unit} available • ₱${price.toFixed(2)} (current price)`;
             }
 
             // REUSABLE
@@ -753,14 +834,202 @@ document.addEventListener("DOMContentLoaded", () => {
     addProductBtn.onclick = () => createProductRow();
 
 
+
+    const createVariantEstimateBlock = (variant) => {
+        const wrapper = document.createElement("div");
+        wrapper.className = `
+            mt-2 ml-4 p-3 rounded-lg
+            bg-yellow-50 dark:bg-yellow-900/30
+            border border-yellow-200 dark:border-yellow-700
+            advanced-pricing hidden
+        `;
+        const header = document.createElement("div");
+        header.className = "mb-2";
+
+        header.innerHTML = `
+            <h5 class="text-xs font-semibold text-yellow-800 dark:text-yellow-200">
+                 Estimated Products (Pricing Only)
+            </h5>
+            <p class="text-xs text-yellow-700 dark:text-yellow-300 mt-1">
+                Used only for <strong>price estimation</strong>.
+                <br>
+                <span class="italic">
+                    These do NOT deduct stock and are NOT used by the cashier.
+                </span>
+            </p>
+        `;
+
+        wrapper.appendChild(header);
+
+        // Unsaved variant → locked
+        if (!variant.id) {
+            wrapper.innerHTML = `
+                <div class="text-xs text-gray-500 italic">
+                    Save the service first to define estimated products for pricing.
+                    <br>
+                    (This does not affect inventory.)
+                </div>
+            `;
+
+            return wrapper;
+        }
+
+        // Init state
+        if (!variantEstimates[variant.id]) {
+            variantEstimates[variant.id] = (variant.estimates || []).map(e => ({
+                product_id: e.product_id,
+                quantity: e.estimated_quantity,
+                unit: e.unit
+            }));
+        }
+
+        const renderRows = () => {
+            rows.innerHTML = "";
+            const selectedEstimateProducts = variantEstimates[variant.id]
+                .map(e => String(e.product_id))
+                .filter(Boolean);
+
+            variantEstimates[variant.id].forEach((e, idx) => {
+                const product = products.find(p => p.id == e.product_id);
+
+                const row = document.createElement("div");
+                row.className = "flex gap-2 mb-2";
+
+                row.innerHTML = `
+                <select class="flex-1 px-2 py-1 border rounded">
+                    <option value="">Select product</option>
+                    ${products.map(p => `
+                        <option value="${p.id}"
+                            ${p.id == e.product_id ? "selected" : ""}
+                            ${p.id != e.product_id && selectedEstimateProducts.includes(String(p.id)) ? "disabled" : ""}>
+                            ${p.name}
+                        </option>
+                    `).join("")}
+                </select>
+
+                <input type="number"
+                    step="0.01"
+                    class="w-24 px-2 py-1 border rounded"
+                    value="${e.quantity}">
+
+                <span class="text-xs text-gray-500 self-center">
+                    ${product?.unit || "pcs"}
+                </span>
+
+                <button type="button"
+                    class="px-2 text-white bg-red-500 rounded">
+                    X
+                </button>
+            `;
+
+                const sel = row.querySelector("select");
+                const qty = row.querySelector("input");
+                const del = row.querySelector("button");
+
+                sel.onchange = () => {
+                    e.product_id = parseInt(sel.value);
+                    const p = products.find(p => p.id == e.product_id);
+                    e.unit = p?.unit || "pcs";
+                    renderRows();
+                    updateSummary();
+                };
+
+                qty.oninput = () => {
+                    e.quantity = parseFloat(qty.value || 0);
+                    updateSummary();
+                };
+
+                del.onclick = () => {
+                    variantEstimates[variant.id].splice(idx, 1);
+                    renderRows();
+                    updateSummary();
+                };
+
+                rows.appendChild(row);
+            });
+        };
+
+        const rows = document.createElement("div");
+
+        const addBtn = document.createElement("button");
+        addBtn.type = "button";
+        addBtn.className = "text-xs text-purple-600 mt-1";
+        addBtn.textContent = "+ Add estimated product";
+        addBtn.onclick = () => {
+            variantEstimates[variant.id].push({
+                product_id: "",
+                quantity: 0,
+                unit: "pcs"
+            });
+            renderRows();
+        };
+
+        const summary = document.createElement("div");
+        summary.className = "mt-2 text-xs text-gray-600";
+
+        const updateSummary = () => {
+            const base = parseFloat(variant.price || 0);
+            const cost = calculateVariantEstimateCost(variantEstimates[variant.id]);
+
+            let warning = "";
+            if (cost > base) {
+                warning = `
+                <div class="mt-1 text-xs text-red-600">
+                    ⚠ Estimated cost is higher than the variant price.
+                </div>
+            `;
+            }
+
+            summary.innerHTML = `
+            Est. product cost: <strong>₱${cost.toFixed(2)}</strong><br>
+            Est. total price: <strong>₱${(base + cost).toFixed(2)}</strong>
+            ${warning}
+        `;
+            const margin = base > 0
+                ? (((base - cost) / base) * 100).toFixed(1)
+                : 0;
+
+            summary.innerHTML += `
+                <div class="mt-1 text-xs text-gray-500">
+                    Est. margin: ${margin}%
+                </div>
+            `;
+
+        };
+
+        wrapper.appendChild(rows);
+        wrapper.appendChild(addBtn);
+        wrapper.appendChild(summary);
+
+        renderRows();
+        updateSummary();
+
+        return wrapper;
+    };
+
+
     // ==== MODALS ====
     const serviceFormContainer = document.getElementById("serviceFormContainer");
     const serviceForm = document.getElementById("serviceForm");
     const openServiceModal = (title, data = {}) => {
         deletedVariantIds = [];
+        variantEstimates = {};
         serviceForm.reset();
         document.getElementById("formTitle").textContent = title;
         productContainer.innerHTML = "";
+
+        if (products.length && !productContainer.parentElement.querySelector(".product-hint-global")) {
+            const hint = document.createElement("div");
+            hint.className = "product-hint-global text-xs text-gray-500 italic mt-2";
+            hint.innerHTML = `
+                These are <strong>reference quantities</strong> using current product prices.<br>
+                <span class="italic">
+                    The cashier will record the <strong>actual product usage</strong> during checkout.
+                </span>
+            `;
+
+            productContainer.parentElement.appendChild(hint);
+        }
 
         // existing service products
         (data.products || []).forEach(sp => {
@@ -817,6 +1086,8 @@ document.addEventListener("DOMContentLoaded", () => {
             };
 
             variantContainer.appendChild(div);
+            const estimateUI = createVariantEstimateBlock(v);
+            variantContainer.appendChild(estimateUI);
         });
 
 
@@ -851,6 +1122,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
             div.querySelector(".removeVariantBtn").onclick = () => div.remove();
             variantContainer.appendChild(div);
+            const estimateUI = createVariantEstimateBlock({});
+            variantContainer.appendChild(estimateUI);
         };
 
         document.getElementById("addVariantBtn").onclick = addNewVariant;
@@ -871,6 +1144,11 @@ document.addEventListener("DOMContentLoaded", () => {
         attachRemoveHandlers();
 
         toggleModal(serviceFormContainer, true);
+        setTimeout(() => {
+            const btn = document.getElementById("toggleAdvancedPricing");
+            if (btn) btn.onclick = toggleAdvancedPricing;
+        }, 0);
+
     };
 
 
@@ -902,22 +1180,23 @@ document.addEventListener("DOMContentLoaded", () => {
         const variants = [];
 
         if (variantContainer) {
-            Array.from(variantContainer.children).forEach(row => {
-                const name = row.querySelector(".variant-name")?.value || "";
-                const duration = parseInt(row.querySelector(".variant-duration")?.value || 0);
-                const price = parseFloat(row.querySelector(".variant-price")?.value || 0);
-                const v_id = row.querySelector(".variant-id")?.value || "";
+            Array.from(variantContainer.children)
+                .filter(row => row.querySelector(".variant-name"))
+                .forEach(row => {
+                    const name = row.querySelector(".variant-name").value || "";
+                    const duration = parseInt(row.querySelector(".variant-duration")?.value || 0);
+                    const price = parseFloat(row.querySelector(".variant-price")?.value || 0);
+                    const v_id = row.querySelector(".variant-id")?.value || "";
 
-                formData.append("variant_name[]", name);
-                formData.append("duration_minutes[]", duration);
-                formData.append("price[]", price);
-                formData.append("variant_id[]", v_id);
+                    formData.append("variant_name[]", name);
+                    formData.append("duration_minutes[]", duration);
+                    formData.append("price[]", price);
+                    formData.append("variant_id[]", v_id);
 
-                if (name) {
-                    variants.push({ id: v_id, name, duration_minutes: duration, price });
-                }
-            });
-
+                    if (name) {
+                        variants.push({ id: v_id, name, duration_minutes: duration, price });
+                    }
+                });
         }
 
         document.querySelectorAll(".product-row").forEach(row => {
@@ -929,12 +1208,28 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         });
 
+        if (
+            serviceProducts.length &&
+            Object.keys(variantEstimates).length === 0
+        ) {
+            showToast(
+                "Reminder: Service products affect inventory. Variant estimates are optional and used only for pricing.",
+                "info",
+                { duration: 6000 }
+            );
+        }
+
+
         formData.append("service_products", JSON.stringify(serviceProducts));
 
         deletedVariantIds.forEach(id => {
             formData.append("deleted_variant_ids[]", id);
         });
 
+        formData.append(
+            "variant_estimates",
+            JSON.stringify(variantEstimates)
+        );
 
         formData.append("action", "create_or_update");
 
@@ -990,7 +1285,7 @@ document.addEventListener("DOMContentLoaded", () => {
     categoryForm.addEventListener("submit", async e => {
         e.preventDefault();
         const formData = new FormData(categoryForm);
-        const id = formData.get("category_id");
+        const id = formData.get("category_id_input");
         const res = await fetch("php/categories_crud.php", { method: "POST", body: formData });
         const data = await res.json();
         showToast(data.message, data.success ? "success" : "error");
