@@ -70,25 +70,59 @@ $include_vat = (int)$transaction['include_vat'];
    SERVICES
 ========================= */
 $stmt = $conn->prepare("
-    SELECT 
+    SELECT
         ts.id,
         ts.appointment_service_id,
+
         s.name AS service_name,
-        ts.quantity,
-        ts.unit_price,
-        ts.total_price
+
+        aps.employee_id,
+        emp.full_name AS staff_name,
+
+        aps.variant_id,
+        v.name AS variant_name,
+
+        a.source AS appointment_source,
+
+        COALESCE(ts.unit_price, s.base_price) AS unit_price,
+        (ts.unit_price IS NOT NULL) AS has_variant_price,
+        COALESCE(ts.unit_price, s.base_price) AS total_price
+
     FROM spa_transaction_services ts
-    JOIN services s ON s.id = ts.service_id
+
+    JOIN appointment_services aps
+        ON aps.id = ts.appointment_service_id
+
+    JOIN services s
+        ON s.id = ts.service_id
+
+    LEFT JOIN employees emp
+        ON emp.id = aps.employee_id
+
+    LEFT JOIN service_variants v
+        ON v.id = aps.variant_id
+
+    JOIN appointments a
+        ON a.id = aps.appointment_id
+
     WHERE ts.transaction_id = ?
 ");
+
 $stmt->bind_param("i", $transaction_id);
 $stmt->execute();
 
 $services = [];
 $res = $stmt->get_result();
+
 while ($row = $res->fetch_assoc()) {
     $asid = $row['appointment_service_id'];
+
+    // Attach products
     $row['products_used'] = $serviceProductsByService[$asid] ?? [];
+
+    // ✅ SIMPLE + CORRECT RULE
+    $row['is_booking_service'] = ($row['appointment_source'] === 'online');
+
     $services[] = $row;
 }
 
@@ -126,18 +160,26 @@ if ($appointment_id > 0) {
 /* =========================
    TOTALS
 ========================= */
+
+// Services ARE billable
 $services_total = array_sum(array_column($services, 'total_price'));
+
+// Consumables are NOT billable
+$consumables_total = $product_usage_total;
+
+// Extra products ARE billable
 $extra_products_total = array_sum(array_column($products, 'total_price'));
 
-$products_total = $product_usage_total + $extra_products_total;
-$subtotal = $services_total + $products_total;
+// Only billable items go into subtotal
+$billable_subtotal = $services_total + $extra_products_total;
 
-if ($include_vat) {
-    $vat_amount = round(($subtotal * $vat_rate) / 100, 2);
-    $grand_total = round($subtotal + $vat_amount, 2);
+// VAT applies only on billable subtotal
+if ($include_vat && $billable_subtotal > 0) {
+    $vat_amount = round(($billable_subtotal * $vat_rate) / 100, 2);
+    $grand_total = round($billable_subtotal + $vat_amount, 2);
 } else {
     $vat_amount = 0;
-    $grand_total = round($subtotal, 2);
+    $grand_total = round($billable_subtotal, 2);
 }
 
 /* =========================
@@ -188,6 +230,12 @@ if ($total_paid <= 0) {
     $payment_status = "paid";
 }
 
+$transaction['balance_due'] = max(
+    0,
+    round($grand_total - $total_paid, 2)
+);
+
+
 /* =========================
    ATTACH PAYMENT DATA
 ========================= */
@@ -208,13 +256,14 @@ echo json_encode([
     "payments" => $payments,
     "totals" => [
         "services_total" => round($services_total, 2),
-        "consumables_total" => round($product_usage_total, 2),
+        "consumables_total" => round($consumables_total, 2), // informational only
         "extra_products_total" => round($extra_products_total, 2),
-        "products_total" => round($products_total, 2),
-        "subtotal" => round($subtotal, 2),
-        "vat_rate" => $include_vat ? $vat_rate : 0,
+        "products_total" => round($extra_products_total, 2), // billable products
+        "subtotal" => round($billable_subtotal, 2),
+        "vat_rate" => ($include_vat && $billable_subtotal > 0) ? $vat_rate : 0,
         "vat_amount" => round($vat_amount, 2),
         "grand_total" => round($grand_total, 2),
         "include_vat" => $include_vat
     ]
+
 ]);

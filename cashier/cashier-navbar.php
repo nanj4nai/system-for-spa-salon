@@ -40,6 +40,13 @@
                 <i id="helpIcon" data-lucide="circle-question-mark" class="w-4 h-4"></i>
                 Tips
             </button>
+            <!-- REFRESH -->
+            <button id="refreshBtn"
+                class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
+                title="Refresh page">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+            </button>
+
             <!-- THEME -->
             <button id="themeToggle"
                 class="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition"
@@ -54,6 +61,22 @@
                 <span class="font-medium"><?= htmlspecialchars($username) ?></span>
             </div>
 
+            <!-- LOGOUT -->
+            <form action="../php/logout.php" method="POST">
+                <button
+                    type="submit"
+                    class="flex items-center gap-1 text-xs px-3 py-1 rounded-full
+               bg-gray-200 text-gray-700
+               hover:bg-red-100 hover:text-red-600
+               dark:bg-gray-700 dark:text-gray-200
+               dark:hover:bg-red-900/40 transition"
+                    title="Logout">
+                    <i data-lucide="log-out" class="w-4 h-4"></i>
+                    Logout
+                </button>
+            </form>
+
+
             <!-- CLOSE SHIFT -->
             <button id="closeShiftBtn"
                 class="hidden text-xs px-3 py-1 rounded bg-red-500 text-white">
@@ -62,4 +85,3 @@
         </div>
 
     </header>
-    

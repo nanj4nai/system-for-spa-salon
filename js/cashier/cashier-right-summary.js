@@ -23,12 +23,7 @@ async function loadPaymentMethodSummary(transactionId) {
         // ======================
         // FULLY PAID → LOCKED
         // ======================
-        if (
-            (d.payment_status === "paid" ||
-                d.status === "locked" ||
-                d.is_receivable == 1) &&
-            d.payment_method
-        ) {
+        if (d.payment_status === "paid") {
             box.innerHTML = `
                 <span class="text-gray-600 dark:text-gray-400">
                     Payment Method
@@ -73,11 +68,11 @@ async function loadPaymentMethodSummary(transactionId) {
 
 function renderPaymentOption(method, dbMethod) {
     const isActive =
-        method === CashierState.selectedPaymentMethod ||
-        method === dbMethod;
+        method === CashierState.selectedPaymentMethod;
+
     const disabled = CashierState.transactionLocked ? "disabled" : "";
     return `
-<button
+<button data-mutation
     type="button"
     ${disabled}
     data-method="${method}"

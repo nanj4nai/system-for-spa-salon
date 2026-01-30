@@ -24,10 +24,10 @@ $stmt = $conn->prepare("
         aps.variant_id,
         s.name AS service_name,
         sv.name AS variant_name,
-        e.full_name AS staff_name
+        COALESCE(e.full_name, 'Unassigned') AS staff_name
     FROM appointment_services aps
     JOIN services s ON s.id = aps.service_id
-    JOIN employees e ON e.id = aps.employee_id
+    LEFT JOIN employees e ON e.id = aps.employee_id
     LEFT JOIN service_variants sv ON sv.id = aps.variant_id
     WHERE aps.appointment_id = ?
     ORDER BY aps.id ASC

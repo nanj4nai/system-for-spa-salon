@@ -12,10 +12,17 @@ const confirmCloseShiftBtn = document.getElementById('confirmCloseShiftBtn');
 const finalConfirmShiftModal = document.getElementById('finalConfirmShiftModal');
 const cancelFinalConfirmBtn = document.getElementById('cancelFinalConfirmBtn');
 const confirmFinalSubmitBtn = document.getElementById('confirmFinalSubmitBtn');
+const logoutBtn = document.getElementById('logoutBtn');
+const blockedMessage = document.getElementById('blockedMessage');
+const awaitingOpenSection = document.getElementById('awaitingOpenSection');
+
 
 let lastKnownStatus = null;
 let statusPoller = null;
 
+logoutBtn?.addEventListener('click', () => {
+    window.location.href = '../php/logout.php';
+});
 /* =====================
    STATUS POLLING
 ===================== */
@@ -32,20 +39,23 @@ function startStatusPolling() {
             .then(d => {
                 if (!d.success) return;
 
-                const currentStatus = d.status;
+                if (d.ui_state === 'blocked') {
+                    showToast(d.reason || 'Access blocked', 'error');
+                    setState('blocked');
+                    stopPolling();
+                    return;
+                }
+
+                const currentStatus = d.ui_state;
                 const shift = d.shift || {};
 
                 if (currentStatus === lastKnownStatus) return;
 
-                if (lastKnownStatus === 'pending_close' && currentStatus === 'closed') {
-                    showToast(
-                        shift.remarks?.includes('Force')
-                            ? '⚠️ Shift force-closed by admin'
-                            : '✅ Shift approved and closed',
-                        'success'
-                    );
+                if (d.ui_state === 'blocked') {
+                    showToast(d.reason || 'Access blocked', 'error');
+                    setState('blocked');
                     stopPolling();
-                    setState('none');
+                    return;
                 }
 
                 if (lastKnownStatus === 'pending_close' && currentStatus === 'open') {
@@ -72,7 +82,7 @@ function setState(state) {
     pendingOverlay?.classList.add('hidden');
 
     if (state === "open") {
-        pos?.classList.remove('opacity-50', 'pointer-events-none');
+        pendingOverlay?.classList.add('hidden');
 
         badge.textContent = 'SHIFT OPEN';
         badge.className = 'bg-green-100 text-green-700 px-3 py-1 rounded-full';
@@ -85,8 +95,13 @@ function setState(state) {
     }
 
     else if (state === "pending_close") {
-        pos?.classList.add('opacity-50', 'pointer-events-none');
+        document.getElementById("walkinBtn")?.classList.add('pointer-events-none', 'opacity-50');
+
+        // 📢 Show banner (NOT modal)
         pendingOverlay?.classList.remove('hidden');
+
+        // Load data
+        loadShiftSummaryView();
 
         badge.textContent = 'SHIFT PENDING APPROVAL';
         badge.className = 'bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full';
@@ -98,17 +113,39 @@ function setState(state) {
         startStatusPolling();
     }
 
-    else {
+
+    else if (state === "awaiting_open") {
         overlay?.classList.remove('hidden');
         pos?.classList.add('opacity-50', 'pointer-events-none');
 
-        badge.textContent = 'NO SHIFT';
-        badge.className = 'bg-red-100 text-red-700 px-3 py-1 rounded-full';
+        blockedMessage?.classList.add('hidden');
+        awaitingOpenSection?.classList.remove('hidden');
 
-        openBtn?.classList.remove('hidden');
-        closeBtn?.classList.add('hidden');
+        badge.textContent = 'ENTER OPENING CASH';
+        badge.className = 'bg-blue-100 text-blue-700 px-3 py-1 rounded-full';
+
+        openBtn?.classList.remove('hidden');   // 👈 ADD
+        closeBtn?.classList.add('hidden');     // 👈 ADD
 
         stopPolling();
+    }
+
+    else if (state === "blocked") {
+        overlay?.classList.remove('hidden');
+        pos?.classList.add('opacity-50', 'pointer-events-none');
+
+        blockedMessage?.classList.remove('hidden');
+        awaitingOpenSection?.classList.add('hidden');
+
+        badge.textContent = 'AWAITING ADMIN';
+        badge.className = 'bg-red-100 text-red-700 px-3 py-1 rounded-full';
+
+        stopPolling();
+    }
+
+    else {
+        // fallback safety
+        setState("blocked");
     }
 }
 
@@ -121,7 +158,12 @@ fetch('../php/cashier/cashier-shift.php', {
     body: 'action=status'
 })
     .then(r => r.json())
-    .then(d => d.success && setState(d.status));
+    .then(d => {
+        if (!d.success) return;
+        lastKnownStatus = d.ui_state;
+        setState(d.ui_state);
+    });
+
 
 /* =====================
    OPEN SHIFT
@@ -135,7 +177,21 @@ openBtn?.addEventListener('click', () => {
         body: `action=open&opening_cash=${cash}`
     })
         .then(r => r.json())
-        .then(d => d.success ? setState("open") : alert(d.error));
+        .then(d => {
+            if (!d.success) {
+                alert(d.error);
+                return;
+            }
+
+            fetch('../php/cashier/cashier-shift.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: 'action=status'
+            })
+                .then(r => r.json())
+                .then(s => s.success && setState(s.ui_state));
+        });
+
 });
 
 /* =====================

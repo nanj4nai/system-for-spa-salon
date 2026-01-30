@@ -51,7 +51,12 @@ recalcTransaction($conn, $transaction_id);
    LOAD FRESH TOTALS
 ===================== */
 $stmt = $conn->prepare("
-    SELECT status, total_amount, amount_paid, payment_status
+    SELECT
+        status,
+        total_amount,
+        amount_paid,
+        payment_status,
+        is_receivable
     FROM spa_transactions
     WHERE id = ?
 ");
@@ -65,8 +70,9 @@ echo json_encode([
     "success" => true,
     "has_transaction" => true,
     "transaction_id" => $transaction_id,
-    "status" => $txn['status'], // 🔥 NEW
+    "status" => $txn['status'],
     "payment_status" => $txn['payment_status'],
+    "is_receivable" => (int)$txn['is_receivable'],
     "amount_paid" => (float)$txn['amount_paid'],
     "total_amount" => (float)$txn['total_amount'],
     "refundable" => $refundable

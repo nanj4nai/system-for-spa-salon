@@ -269,17 +269,6 @@ $categories = $conn->query("SELECT * FROM service_categories ORDER BY name ASC")
 
                         <button type="button" id="addProductBtn" class="px-3 py-1 mb-3 bg-blue-500 text-white rounded">Add Product</button>
 
-                        <!-- ADVANCED PRICING TOGGLE -->
-                        <div class="mb-3">
-                            <button
-                                type="button"
-                                id="toggleAdvancedPricing"
-                                class="flex items-center gap-2 text-sm text-yellow-700 dark:text-yellow-300">
-                                <span id="advancedPricingIcon">▶</span>
-                                Advanced Pricing (Estimates & Margins)
-                            </button>
-                        </div>
-
                         <!-- VARIANTS -->
                         <div id="variantContainer" class="mb-3" data-role="service-variants"></div>
 

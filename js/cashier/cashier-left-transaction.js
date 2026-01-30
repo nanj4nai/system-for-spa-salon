@@ -10,22 +10,20 @@ document.addEventListener("appointment:checkedIn", (e) => {
 
     CashierState.activeAppointmentId = appointmentId;
     CashierState.activeTransactionId = financial.transaction_id;
+
+    CashierState.transactionLocked = false;
+    CashierState.pendingPayment = false;
     CashierState.lockCountdownFinished = false;
 
     loadTransaction(financial.transaction_id);
 });
 
-
 // ================================
 // LOCK TRANSACTION FOR PAYMENT
 // ================================
 document.getElementById("payBtn").addEventListener("click", async () => {
-    if (!CashierState.activeTransactionId) return;
 
-    if (!canLockTransaction()) {
-        showToast("Add at least one service or product before proceeding", "error");
-        return;
-    }
+    if (!CashierState.activeTransactionId) return;
 
     const res = await fetch(
         `../php/cashier/left/get-transaction-details.php?transaction_id=${CashierState.activeTransactionId}`,
@@ -34,9 +32,27 @@ document.getElementById("payBtn").addEventListener("click", async () => {
 
     const d = await res.json();
     if (!d.success) {
-        showToast("Failed to load transaction summary", "error");
+        showToast("Failed to load transaction", "error");
         return;
     }
+
+    const txn = d.transaction;
+
+    if (txn.payment_status === "paid") {
+        showToast("Transaction already fully paid", "error");
+        return;
+    }
+
+    if (txn.status === "pending_verification") {
+        showToast("Online payment pending verification", "error");
+        return;
+    }
+
+    if (!canLockTransaction()) {
+        showToast("Add at least one service or product before proceeding", "error");
+        return;
+    }
+
     CashierState.lockCountdownFinished = false;
 
     const btn = document.getElementById("confirmLockBtn");
@@ -165,11 +181,7 @@ function loadTransaction(transactionId) {
 
             lastLoadedTransactionId = d.transaction.transaction_id;
 
-            if (CashierState.transactionLocked && d.transaction.payment_method) {
-                CashierState.selectedPaymentMethod = d.transaction.payment_method;
-            } else {
-                CashierState.selectedPaymentMethod = null;
-            }
+            CashierState.selectedPaymentMethod = null;
 
             if (window.setActiveContext) {
                 setActiveContext(
@@ -191,11 +203,10 @@ function renderClientInfo(txn) {
         </div>
     `;
 }
-
 function renderServiceList(services) {
     const list = document.getElementById("serviceList");
 
-    if (!services.length) {
+    if (!services?.length) {
         list.innerHTML = `
             <div class="text-sm text-gray-400">
                 No services added yet
@@ -204,25 +215,120 @@ function renderServiceList(services) {
         return;
     }
 
-    list.innerHTML = services.map(s => `
-        <div class="service-card p-3 bg-white dark:bg-gray-800 rounded-lg shadow flex justify-between">
-            <div>
-                <div class="font-medium">${s.service_name}</div>
-                <div class="text-xs text-gray-400">Qty: ${s.quantity}</div>
-            </div>
-            <div class="font-semibold">₱${s.total_price}</div>
-        </div>
-    `).join("");
+    list.innerHTML = services.map(s => {
+        const isBookingService = s.is_booking_service === true;
+        const locked = CashierState.transactionLocked;
 
-    // 🔒 apply read-only style AFTER render
+        return `
+            <div
+                class="service-card p-3 rounded-lg shadow
+                       bg-white dark:bg-gray-800 space-y-1"
+                data-appointment-service-id="${s.appointment_service_id}"
+            >
+
+                <!-- HEADER -->
+                <div class="flex justify-between items-start gap-3">
+                    <div>
+                        <div class="font-medium">${s.service_name}</div>
+
+                        ${s.variant_name ? `
+                            <div class="text-xs text-indigo-500">
+                                Variant: ${s.variant_name}
+                            </div>
+                        ` : ""}
+
+                        <div class="text-xs text-gray-500">
+                            Staff: ${s.staff_name || "Unassigned"}
+                        </div>
+
+                        ${isBookingService ? `
+                            <div class="text-[11px] text-blue-500 italic">
+                                Online booking service
+                            </div>
+                        ` : ""}
+                    </div>
+
+                    <div class="text-sm font-semibold whitespace-nowrap">
+                        ₱${Number(s.total_price).toFixed(2)}
+                    </div>
+                </div>
+
+                <!-- PRODUCTS USED -->
+                ${s.products_used?.length ? `
+                    <div class="ml-3 mt-1 space-y-0.5 text-[11px] text-gray-500">
+                        ${s.products_used.map(p => `
+                            <div>
+                                • ${p.name} (${p.quantity_used}${p.unit})
+                            </div>
+                        `).join("")}
+                    </div>
+                ` : `
+                    <div class="ml-3 mt-1 text-[11px] italic text-gray-400">
+                        No products used
+                    </div>
+                `}
+
+                <!-- ACTIONS -->
+                    ${!locked ? `
+                        <div class="flex gap-2 pt-2">
+
+                            ${isBookingService ? `
+                                <!-- ONLINE SERVICE -->
+                                <button data-mutation
+                                    class="text-xs px-2 py-1 rounded
+                                        bg-emerald-500 text-white"
+                                    data-action="edit-usage"
+                                    data-id="${s.appointment_service_id}"
+                                >
+                                    Edit product usage
+                                </button>
+
+                                <button data-mutation
+                                    class="text-xs px-2 py-1 rounded
+                                        bg-gray-200 text-gray-600 cursor-default"
+                                    disabled
+                                    title="Online booking services cannot be removed"
+                                >
+                                    Locked
+                                </button>
+                            ` : `
+                                <!-- CASHIER-ADDED SERVICE -->
+                                <button
+                                    data-mutation
+                                    class="text-xs px-2 py-1 rounded
+                                        bg-gray-200 text-gray-800
+                                        hover:bg-gray-300
+                                        dark:bg-gray-700 dark:text-gray-200
+                                        dark:hover:bg-gray-600
+                                        transition"
+                                    data-action="edit-service"
+                                    data-id="${s.appointment_service_id}"
+                                >
+                                    Edit
+                                </button>
+
+
+                                <button data-mutation
+                                    class="text-xs px-2 py-1 rounded bg-red-500 text-white"
+                                    data-action="remove-service"
+                                    data-id="${s.appointment_service_id}"
+                                >
+                                    Remove
+                                </button>
+                            `}
+                        </div>
+                    ` : ""}
+
+            </div>
+        `;
+    }).join("");
+
     if (CashierState.transactionLocked) {
-        list.querySelectorAll(".service-card")
-            .forEach(card =>
-                card.classList.add("opacity-50", "pointer-events-none")
-            );
+        list.querySelectorAll(".service-card").forEach(card => {
+            card.classList.add("opacity-50", "pointer-events-none");
+        });
     }
 }
-
 
 // ================================
 // PAYMENT UI CONTROL
@@ -283,58 +389,61 @@ function resetExtraProductsUI() {
         </div>`;
     }
 }
+
 function renderTransactionBreakdown(data) {
     const serviceBox = document.getElementById("serviceBreakdown");
     const productBox = document.getElementById("productBreakdown");
     const vatBtn = document.getElementById("toggleVatBtn");
-    // 🔒 GUARD — UI not mounted
-    if (!serviceBox || !productBox) {
-        return;
-    }
+    if (!serviceBox || !productBox) return;
+
     serviceBox.innerHTML = "";
     productBox.innerHTML = "";
 
-    // ======================
-    // SERVICES + CONSUMABLES
-    // ======================
+    let servicesTotal = 0;
+
+    // SERVICES + CONSUMABLES (NO PRICES)
     if (data.services?.length) {
         data.services.forEach(s => {
+            const price = Number(s.total_price) || 0;
+            servicesTotal += price;
+
             serviceBox.innerHTML += `
-                <div class="text-xs">
-                    <div class="flex justify-between font-medium">
-                        <span>${s.service_name}</span>
-                        <span>₱${Number(s.total_price).toFixed(2)}</span>
+            <div class="text-xs space-y-0.5">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="font-medium">${s.service_name}</div>
+
+                        ${s.has_variant_price ? `
+                            <div class="text-xs text-gray-500">
+                                Variant price
+                            </div>
+                        ` : ""}
                     </div>
 
-                    ${s.products_used?.length
-                    ? `
-                        <div class="ml-3 mt-1 space-y-0.5 text-[11px] text-gray-500">
-                            ${s.products_used.map(p => `
-                                <div class="flex justify-between">
-                                    <span>
-                                        • ${p.name}
-                                        (${p.quantity_used}${p.unit})
-                                    </span>
-                                    <span>
-                                        ₱${Number(p.total_price).toFixed(2)}
-                                    </span>
-                                </div>
-                            `).join("")}
-                        </div>
-                        `
-                    : ""
-                }
+                    <div class="font-semibold">
+                        ₱${price.toFixed(2)}
+                    </div>
                 </div>
-            `;
+
+                ${s.products_used?.length ? `
+                    <div class="ml-3 mt-1 space-y-0.5 text-[11px] text-gray-500">
+                        ${s.products_used.map(p => `
+                            <div>
+                                • ${p.name} (${p.quantity_used}${p.unit})
+                            </div>
+                        `).join("")}
+                    </div>
+                ` : ""}
+            </div>
+        `;
         });
     } else {
         serviceBox.innerHTML =
             `<div class="text-xs italic text-gray-400">No services</div>`;
     }
 
-    // ======================
-    // EXTRA PRODUCTS (separate)
-    // ======================
+
+    // EXTRA PRODUCTS (still billable)
     if (data.products?.length) {
         data.products.forEach(p => {
             productBox.innerHTML += `
@@ -349,32 +458,23 @@ function renderTransactionBreakdown(data) {
             `<div class="text-xs italic text-gray-400">No extra products</div>`;
     }
 
-    // ======================
-    // VAT toggle
-    // ======================
+    // VAT toggle stays (for extra products)
     if (vatBtn) {
         const enabled = data.totals.include_vat == 1;
         vatBtn.dataset.enabled = enabled ? "1" : "0";
         vatBtn.textContent = enabled ? "ON" : "OFF";
     }
 
-    // ======================
-    // TOTALS
-    // ======================
+    // 🚫 DO NOT show service / consumable totals
     document.getElementById("servicesTotal").textContent =
-        `₱${Number(data.totals.services_total).toFixed(2)}`;
+        `₱${servicesTotal.toFixed(2)}`;
 
-    document.getElementById("consumablesTotal").textContent =
-        `₱${Number(data.totals.consumables_total).toFixed(2)}`;
-
+    // ✅ Extra products still count
     document.getElementById("extraProductsTotal").textContent =
         `₱${Number(data.totals.extra_products_total).toFixed(2)}`;
 
     document.getElementById("subtotalAmount").textContent =
         `₱${Number(data.totals.subtotal).toFixed(2)}`;
-
-    document.getElementById("vatRateLabel").textContent =
-        Number(data.totals.vat_rate).toFixed(2);
 
     document.getElementById("vatAmount").textContent =
         `₱${Number(data.totals.vat_amount).toFixed(2)}`;
@@ -384,6 +484,7 @@ function renderTransactionBreakdown(data) {
 }
 
 function renderPaymentBreakdown(d) {
+
     // ⛔ do not render during shift / locked UI
     if (
         document.getElementById('closeShiftModal')?.classList.contains('hidden') === false ||
@@ -392,19 +493,122 @@ function renderPaymentBreakdown(d) {
         return;
     }
 
+    const txn = d.transaction;
+    const isReceivable = txn.is_receivable == 1;
+    // 🔒 HARD BUSINESS RULES
+    const lockReason =
+        txn.payment_status === "paid"
+            ? "Transaction already fully paid"
+            : txn.status === "pending_verification"
+                ? "Awaiting online payment verification"
+                : null;
+
+    if (lockReason) {
+        lockPaymentUI(lockReason);
+    }
+
     const amountPaidEl = document.getElementById("amountPaidLabel");
     const balanceEl = document.getElementById("balanceLabel");
     const statusLabel = document.getElementById("paymentStatusLabel");
+    const balanceText = document.getElementById("balanceTextLabel");
+    const vatRateEl = document.getElementById("vatRateLabel");
+    const vatAmountEl = document.getElementById("vatAmount");
 
+
+    // ⛔ Hard guard
     if (!amountPaidEl || !balanceEl || !statusLabel) return;
 
-    const txn = d.transaction;
+    const total = Number(
+        d.totals?.grand_total ??
+        txn.total_amount ??
+        0
+    );
 
-    const total = Number(d.totals?.grand_total || txn.total_amount || 0);
-    const paid = Number(txn.amount_paid || 0);
+    const paid = Number(txn.amount_paid ?? 0);
+    const balance = Number(
+        txn.balance_due ??
+        Math.max(0, total - paid)
+    );
 
-    const isReceivable = txn.is_receivable == 1;
-    const balance = Math.max(0, total - paid);
+    CashierState.balanceDue = balance;
+    const isOnlineBooking = paid > 0;
+
+    amountPaidEl.textContent = `₱${paid.toFixed(2)}`;
+    balanceEl.textContent = `₱${balance.toFixed(2)}`;
+
+    // Reset styles first
+    balanceEl.classList.remove(
+        "text-red-600",
+        "text-emerald-600",
+        "text-2xl",
+        "font-bold"
+    );
+
+    const totalEl = document.getElementById("transactionTotal");
+    totalEl?.classList.remove(
+        "text-emerald-600",
+        "text-2xl",
+        "font-bold"
+    );
+
+    if (isOnlineBooking && balance > 0) {
+        // 🔴 ONLINE BOOKING → emphasize BALANCE
+        balanceEl.classList.add("text-amber-600", "text-2xl", "font-bold");
+    }
+    else {
+        // 🟢 WALK-IN → emphasize TOTAL
+        totalEl?.classList.add("text-emerald-600", "text-2xl", "font-bold");
+    }
+
+    // ======================
+    // BALANCE LABEL
+    // ======================
+    if (balanceText) {
+        if (balance <= 0) {
+            balanceText.textContent = "Paid in Full";
+        }
+        else if (isReceivable) {
+            balanceText.textContent = "Receivable Balance";
+        }
+        else if (isOnlineBooking) {
+            balanceText.textContent = "Balance to Pay";
+        }
+        else {
+            balanceText.textContent = "Total to Collect";
+        }
+    }
+
+    const helper = document.getElementById("balanceHelper");
+    if (helper) {
+        if (isOnlineBooking && balance > 0) {
+            helper.textContent = "Client already paid online";
+        }
+        else {
+            helper.textContent = "";
+        }
+    }
+
+    const payBtn = document.getElementById("payBtn");
+    if (payBtn) {
+        if (balance <= 0) {
+            payBtn.disabled = true;
+            payBtn.classList.add("opacity-50");
+        } else {
+            payBtn.disabled = false;
+            payBtn.classList.remove("opacity-50");
+        }
+    }
+    
+    if (vatRateEl) {
+        vatRateEl.textContent =
+            Number(d.totals?.vat_rate ?? 0).toFixed(0);
+    }
+
+    if (vatAmountEl) {
+        vatAmountEl.textContent =
+            `₱${Number(d.totals?.vat_amount ?? 0).toFixed(2)}`;
+    }
+
 
     // ======================
     // AMOUNTS
@@ -416,9 +620,24 @@ function renderPaymentBreakdown(d) {
     if (changeEl) changeEl.textContent = "₱0.00";
 
     // ======================
+    // BALANCE LABEL
+    // ======================
+    if (balanceText) {
+        if (isReceivable) {
+            balanceText.textContent = "Receivable Balance";
+        }
+        else if (balance > 0 && paid > 0) {
+            balanceText.textContent = "Remaining Balance";
+        }
+        else {
+            balanceText.textContent = "Balance";
+        }
+    }
+
+
+    // ======================
     // STATUS
     // ======================
-
     statusLabel.className = "font-semibold";
     statusLabel.classList.remove(
         "text-purple-600",
@@ -426,57 +645,29 @@ function renderPaymentBreakdown(d) {
         "text-amber-500",
         "text-gray-400"
     );
-    // ======================
-    // RECEIPTS
-    // ======================
-    renderPaymentReceipts(d.payments || []);
 
     if (isReceivable) {
-        const methodBox = document.getElementById("lockPaymentMethodSummary");
-        if (methodBox) {
-            methodBox.insertAdjacentHTML(
-                "beforeend",
-                `<span class="text-[11px] text-purple-500 italic">
-                Remaining balance recorded as Accounts Receivable
-            </span>`
-            );
-        }
+        statusLabel.textContent = "RECEIVABLE";
+        statusLabel.classList.add("text-purple-600");
     }
     else if (txn.payment_status === "paid") {
         statusLabel.textContent = "PAID";
         statusLabel.classList.add("text-emerald-600");
-    } else if (txn.payment_status === "partial") {
+    }
+    else if (txn.payment_status === "partial") {
         statusLabel.textContent = "PARTIAL";
         statusLabel.classList.add("text-amber-500");
-    } else {
+    }
+    else {
         statusLabel.textContent = "UNPAID";
         statusLabel.classList.add("text-gray-400");
     }
 
     // ======================
-    // LABEL ADJUSTMENTS
+    // RECEIPTS
     // ======================
-    const balanceText = document.getElementById("balanceTextLabel");
-    if (balanceText) {
-        balanceText.textContent = isReceivable
-            ? "Receivable Balance"
-            : "Balance";
-    }
+    renderPaymentReceipts(d.payments || []);
 
-    // ======================
-    // REFERENCE
-    // ======================
-    const refRow = document.getElementById("paymentReferenceRow");
-    const refLabel = document.getElementById("paymentReferenceLabel");
-
-    if (refRow && refLabel) {
-        if (txn.reference_number && txn.payment_method !== "cash") {
-            refLabel.textContent = txn.reference_number;
-            refRow.classList.remove("hidden");
-        } else {
-            refRow.classList.add("hidden");
-        }
-    }
 }
 
 
@@ -500,18 +691,28 @@ function populateLockSummary(data) {
     if (data.services.length) {
         data.services.forEach(s => {
             serviceBox.innerHTML += `
-                <div class="text-xs">
-                    <div class="flex justify-between font-medium">
-                        <span>${s.service_name}</span>
-                        <span>₱${Number(s.total_price).toFixed(2)}</span>
+                <div class="text-xs space-y-0.5">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="font-medium">${s.service_name}</div>
+
+                            ${s.has_variant_price ? `
+                                <div class="text-xs text-gray-500">
+                                    Variant price
+                                </div>
+                            ` : ""}
+                        </div>
+
+                        <div class="font-semibold">
+                            ₱${Number(s.total_price).toFixed(2)}
+                        </div>
                     </div>
 
                     ${s.products_used?.length ? `
                         <div class="ml-3 mt-1 space-y-0.5 text-[11px] text-gray-500">
                             ${s.products_used.map(p => `
-                                <div class="flex justify-between">
-                                    <span>• ${p.name} (${p.quantity_used}${p.unit})</span>
-                                    <span>₱${Number(p.total_price).toFixed(2)}</span>
+                                <div>
+                                    • ${p.name} (${p.quantity_used}${p.unit})
                                 </div>
                             `).join("")}
                         </div>
@@ -547,9 +748,6 @@ function populateLockSummary(data) {
     document.getElementById("lockServicesTotal").textContent =
         `₱${Number(data.totals.services_total).toFixed(2)}`;
 
-    document.getElementById("lockConsumablesTotal").textContent =
-        `₱${Number(data.totals.consumables_total).toFixed(2)}`;
-
     document.getElementById("lockExtraProductsTotal").textContent =
         `₱${Number(data.totals.extra_products_total).toFixed(2)}`;
 
@@ -564,6 +762,12 @@ function populateLockSummary(data) {
 
     document.getElementById("lockGrandTotal").textContent =
         `₱${Number(data.totals.grand_total).toFixed(2)}`;
+
+    document.getElementById("lockPaidTotal").textContent =
+        `₱${Number(data.transaction.amount_paid).toFixed(2)}`;
+
+    document.getElementById("lockBalanceDue").textContent =
+        `₱${Number(data.transaction.balance_due).toFixed(2)}`;
     // ======================
     // PAYMENT METHOD (READ-ONLY)
     // ======================
@@ -670,3 +874,27 @@ function refreshAppointmentsRealtime() {
         }
     }, 100);
 }
+
+document.getElementById("serviceList").addEventListener("click", e => {
+    const btn = e.target.closest("[data-action]");
+    if (!btn) return;
+
+    if (CashierState.transactionLocked) {
+        showToast("Transaction is locked", "error");
+        return;
+    }
+
+    const id = btn.dataset.id;
+
+    if (btn.dataset.action === "edit-usage") {
+        openEditService(id);
+    }
+
+    if (btn.dataset.action === "edit-service") {
+        openEditService(id);
+    }
+
+    if (btn.dataset.action === "remove-service") {
+        removeService(id);
+    }
+});

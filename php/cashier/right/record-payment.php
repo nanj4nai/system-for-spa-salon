@@ -53,14 +53,29 @@ try {
 
     $client_id   = (int)$tx['client_id'];
     $totalAmount = (float)$tx['total_amount'];
-    $alreadyPaid = (float)$tx['amount_paid'];
+
+    $stmt = $conn->prepare("
+        SELECT COALESCE(SUM(amount), 0)
+        FROM payments
+        WHERE transaction_id = ?
+    ");
+    $stmt->bind_param("i", $transaction_id);
+    $stmt->execute();
+    $alreadyPaid = (float)$stmt->get_result()->fetch_row()[0];
+
 
     $remaining = max(0, $totalAmount - $alreadyPaid);
 
+    if ($remaining <= 0) {
+        throw new Exception("Transaction is already fully paid");
+    }
+
     /* ================================
        BUSINESS RULES
-    ================================ */
-    if ($method !== 'cash' && $amount != $remaining) {
+       ================================ */
+    $method = strtolower(trim($data['payment_method'] ?? 'cash'));
+
+    if ($method !== 'cash' && round($amount, 2) !== round($remaining, 2)) {
         throw new Exception("Non-cash payments must be exact amount");
     }
 
@@ -71,7 +86,14 @@ try {
     /* ================================
        CALCULATIONS
     ================================ */
-    $newPaid = $alreadyPaid + $amount;
+    if ($method === 'cash' && $amount > $remaining) {
+        // allow overpayment, change is implied
+        $amountApplied = $remaining;
+    } else {
+        $amountApplied = $amount;
+    }
+
+    $newPaid = $alreadyPaid + $amountApplied;
     $balance = max(0, $totalAmount - $newPaid);
 
     $paymentStatus = ($balance == 0) ? 'paid' : 'partial';
@@ -103,7 +125,7 @@ try {
     $stmt->bind_param(
         "idssss",
         $transaction_id,
-        $amount,
+        $amountApplied,
         $method,
         $receiptNumber,
         $reference,
@@ -119,7 +141,7 @@ try {
     $hasReceivable = $isReceivable;
 
     $status = ($paymentStatus === 'paid' || $isReceivable)
-        ? 'locked'
+        ? 'finalized'
         : 'editing';
 
     $stmt = $conn->prepare("
@@ -147,18 +169,59 @@ try {
     );
     $stmt->execute();
 
+
     /* ================================
-       ACCOUNTS RECEIVABLE
+    APPLY STAFF COMMISSIONS
     ================================ */
+    if ($status === 'finalized') {
+
+        $stmt = $conn->prepare("
+            SELECT
+                sts.id AS sts_id,
+                sts.total_price,
+                COALESCE(sc.commission_percent, s.default_commission_percent, 0) AS commission_percent
+            FROM spa_transaction_services sts
+            JOIN services s ON s.id = sts.service_id
+            LEFT JOIN staff_commissions sc
+                ON sc.employee_id = sts.employee_id
+            AND sc.service_id = sts.service_id
+            WHERE sts.transaction_id = ?
+            AND sts.commission_amount = 0
+        ");
+        $stmt->bind_param("i", $transaction_id);
+        $stmt->execute();
+        $res = $stmt->get_result();
+
+        $update = $conn->prepare("
+            UPDATE spa_transaction_services
+            SET commission_amount = ?
+            WHERE id = ?
+        ");
+
+        while ($row = $res->fetch_assoc()) {
+            $commissionAmount = round(
+                $row['total_price'] * ($row['commission_percent'] / 100),
+                2
+            );
+
+            $update->bind_param("di", $commissionAmount, $row['sts_id']);
+            $update->execute();
+        }
+    }
+
+    /* ================================
+        ACCOUNTS RECEIVABLE (PAY LATER)
+        =============================== */
     if ($isReceivable) {
         $stmt = $conn->prepare("
-            INSERT INTO accounts_receivable
-                (client_id, transaction_id, amount, balance, status)
-            VALUES (?, ?, ?, ?, 'open')
-            ON DUPLICATE KEY UPDATE
-                balance = VALUES(balance),
-                status  = 'open'
-        ");
+                INSERT INTO accounts_receivable
+                    (client_id, transaction_id, amount, balance, status, ar_type)
+                VALUES (?, ?, ?, ?, 'open', 'pay_later')
+                ON DUPLICATE KEY UPDATE
+                    balance = VALUES(balance),
+                    status  = 'open',
+                    ar_type = 'pay_later'
+            ");
         $stmt->bind_param(
             "iidd",
             $client_id,
@@ -168,6 +231,7 @@ try {
         );
         $stmt->execute();
     }
+
 
     // ✅ COMMIT ONLY ONCE EVERYTHING SUCCEEDS
     $conn->commit();

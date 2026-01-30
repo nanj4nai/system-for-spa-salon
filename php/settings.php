@@ -7,71 +7,102 @@ if (!isset($_SESSION["user_id"])) {
     exit;
 }
 
-require_once "db.php"; // adjust path if needed
+require_once "db.php";
 
-// Validate inputs
-$spa_name = trim($_POST['spa_name'] ?? '');
-$address = trim($_POST['address'] ?? '');
-$contact_number = trim($_POST['contact_number'] ?? '');
-$invoice_prefix = trim($_POST['invoice_prefix'] ?? 'SPA');
-$vat_rate = floatval($_POST['vat_rate'] ?? 0);
-
-if ($spa_name === '' || $address === '' || $contact_number === '' || $invoice_prefix === '') {
-    echo json_encode(['success' => false, 'error' => 'Please fill all required fields.']);
+// Inputs
+$spa_name        = trim($_POST['spa_name'] ?? '');
+$address         = trim($_POST['address'] ?? '');
+$contact_number  = trim($_POST['contact_number'] ?? '');
+$invoice_prefix  = trim($_POST['invoice_prefix'] ?? 'SPA');
+$vat_rate        = floatval($_POST['vat_rate'] ?? 0);
+$gcash_number    = trim($_POST['gcash_number'] ?? '');
+$email = trim($_POST['email'] ?? '');
+// Validation
+if (
+    $spa_name === '' ||
+    $address === '' ||
+    $contact_number === '' ||
+    $invoice_prefix === '' ||
+    $email === '' ||
+    !filter_var($email, FILTER_VALIDATE_EMAIL)
+) {
+    echo json_encode(['success' => false, 'error' => 'Please enter a valid email address.']);
     exit;
 }
 
-// Helper function to handle file uploads
-function uploadFile($fileInputName, $prefix)
+
+/* ---------- Upload helper ---------- */
+function uploadFile($name, $prefix)
 {
-    if (isset($_FILES[$fileInputName]) && $_FILES[$fileInputName]['error'] === UPLOAD_ERR_OK) {
-        $fileTmpPath = $_FILES[$fileInputName]['tmp_name'];
-        $fileName = basename($_FILES[$fileInputName]['name']);
-        $fileExt = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-        $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'ico'];
-
-        if (!in_array($fileExt, $allowed)) {
-            return ['error' => "Invalid file type for $fileInputName."];
-        }
-
-        $newFileName = $prefix . '_' . time() . '.' . $fileExt;
-        $uploadDir = '../images/';
-        if (!is_dir($uploadDir)) mkdir($uploadDir, 0755, true);
-        $destPath = $uploadDir . $newFileName;
-
-        if (!move_uploaded_file($fileTmpPath, $destPath)) {
-            return ['error' => "Failed to upload $fileInputName."];
-        }
-
-        return ['path' => 'images/' . $newFileName];
+    if (!isset($_FILES[$name]) || $_FILES[$name]['error'] !== UPLOAD_ERR_OK) {
+        return null;
     }
-    return ['path' => null];
+
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime  = finfo_file($finfo, $_FILES[$name]['tmp_name']);
+    finfo_close($finfo);
+
+    $allowedMimes = [
+        'image/jpeg',
+        'image/png',
+        'image/gif',
+        'image/webp'
+    ];
+
+    if (!in_array($mime, $allowedMimes)) {
+        throw new Exception("Invalid image format for $name.");
+    }
+
+    $extMap = [
+        'image/jpeg' => 'jpg',
+        'image/png'  => 'png',
+        'image/gif'  => 'gif',
+        'image/webp' => 'webp'
+    ];
+
+    $ext = $extMap[$mime];
+
+    $dir = '../images/';
+    if (!is_dir($dir)) mkdir($dir, 0755, true);
+
+    $filename = $prefix . '_' . time() . '.' . $ext;
+    move_uploaded_file($_FILES[$name]['tmp_name'], $dir . $filename);
+
+    return 'images/' . $filename;
 }
 
-// Handle logo and favicon uploads
-$logoUpload = uploadFile('logo', 'logo');
-$faviconUpload = uploadFile('favicon', 'favicon');
 
-if (isset($logoUpload['error'])) {
-    echo json_encode(['success' => false, 'error' => $logoUpload['error']]);
+try {
+    $logo_path     = uploadFile('logo', 'logo');
+    $gcash_qr_path = uploadFile('gcash_qr', 'gcash_qr');
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'error' => $e->getMessage()]);
     exit;
 }
 
-if (isset($faviconUpload['error'])) {
-    echo json_encode(['success' => false, 'error' => $faviconUpload['error']]);
-    exit;
-}
+/* ---------- Save ---------- */
+$exists = $conn->query("SELECT id FROM settings LIMIT 1")->num_rows > 0;
 
-$logo_path = $logoUpload['path'];
-$favicon_path = $faviconUpload['path'];
+if ($exists) {
+    $sql = "UPDATE settings SET
+        spa_name=?,
+        address=?,
+        contact_number=?,
+        email=?,
+        invoice_prefix=?,
+        vat_rate=?,
+        gcash_number=?";
 
-// Check if a settings row exists
-$result = $conn->query("SELECT * FROM settings LIMIT 1");
-if ($result->num_rows > 0) {
-    // Update existing
-    $sql = "UPDATE settings SET spa_name=?, address=?, contact_number=?, invoice_prefix=?, vat_rate=?";
-    $params = [$spa_name, $address, $contact_number, $invoice_prefix, $vat_rate];
-    $types = 'ssssd';
+    $params = [
+        $spa_name,
+        $address,
+        $contact_number,
+        $email,
+        $invoice_prefix,
+        $vat_rate,
+        $gcash_number
+    ];
+    $types = 'sssssds';
 
     if ($logo_path) {
         $sql .= ", logo_path=?";
@@ -79,46 +110,39 @@ if ($result->num_rows > 0) {
         $params[] = $logo_path;
     }
 
-    if ($favicon_path) {
-        $sql .= ", favicon_path=?";
+    if ($gcash_qr_path) {
+        $sql .= ", gcash_qr_path=?";
         $types .= 's';
-        $params[] = $favicon_path;
+        $params[] = $gcash_qr_path;
     }
 
     $sql .= " LIMIT 1";
     $stmt = $conn->prepare($sql);
     $stmt->bind_param($types, ...$params);
 } else {
-    // Insert new
-    $sql = "INSERT INTO settings (spa_name, address, contact_number, invoice_prefix, vat_rate";
-    $placeholders = "?, ?, ?, ?, ?";
-    $types = 'ssssd';
-    $params = [$spa_name, $address, $contact_number, $invoice_prefix, $vat_rate];
-
-    if ($logo_path) {
-        $sql .= ", logo_path";
-        $placeholders .= ", ?";
-        $types .= 's';
-        $params[] = $logo_path;
-    }
-
-    if ($favicon_path) {
-        $sql .= ", favicon_path";
-        $placeholders .= ", ?";
-        $types .= 's';
-        $params[] = $favicon_path;
-    }
-
-    $sql .= ") VALUES ($placeholders)";
-    $stmt = $conn->prepare($sql);
-    $stmt->bind_param($types, ...$params);
+    $stmt = $conn->prepare("
+    INSERT INTO settings (
+        spa_name,address,contact_number,email,invoice_prefix,vat_rate,
+        gcash_number,logo_path,gcash_qr_path
+    )
+     VALUES (?,?,?,?,?,?,?,?,?)
+    ");
+    $stmt->bind_param(
+        'sssssdsss',
+        $spa_name,
+        $address,
+        $contact_number,
+        $email,
+        $invoice_prefix,
+        $vat_rate,
+        $gcash_number,
+        $logo_path,
+        $gcash_qr_path
+    );
 }
 
-if ($stmt->execute()) {
-    echo json_encode(['success' => true]);
-} else {
-    echo json_encode(['success' => false, 'error' => $stmt->error]);
-}
-
+$success = $stmt->execute();
 $stmt->close();
 $conn->close();
+
+echo json_encode(['success' => $success]);

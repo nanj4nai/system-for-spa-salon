@@ -13,6 +13,10 @@ const receivableCheckbox = document.getElementById("markAsReceivable");
 // ================================
 
 function openPaymentModal() {
+    if (CashierState.balanceDue === undefined) {
+        showToast("Payment balance not ready. Please try again.", "error");
+        return;
+    }
     const modal = document.getElementById("paymentModal");
     modal.classList.remove("hidden");
     modal.classList.add("flex");
@@ -27,16 +31,21 @@ function openPaymentModal() {
 
     CashierState.pendingPayment = false;
 
-    const total = Number(
-        document.getElementById("transactionTotal").textContent.replace("₱", "")
-    );
+    const balance = Number(CashierState.balanceDue ?? 0);
 
-    document.getElementById("paymentTotal").textContent = `₱${total.toFixed(2)}`;
+    document.getElementById("paymentTotal").textContent =
+        `₱${balance.toFixed(2)}`;
+
 
     const input = document.getElementById("cashReceivedInput");
     const label = document.querySelector("label[for='cashReceivedInput']");
     const refLabel = document.querySelector("#onlinePaymentFields label");
     const refInput = document.getElementById("paymentReferenceInput");
+    const remarksInput = document.getElementById("paymentRemarksInput");
+
+    // 🔥 RESET STALE DATA
+    if (refInput) refInput.value = "";
+    if (remarksInput) remarksInput.value = "";
 
     const method = CashierState.selectedPaymentMethod || "cash";
 
@@ -51,7 +60,7 @@ function openPaymentModal() {
 
     // Amount behavior
     if (method !== "cash") {
-        input.value = total.toFixed(2);
+        input.value = balance.toFixed(2);
         label.textContent = "Amount Charged";
 
         confirmBtn.disabled = false;
@@ -73,9 +82,9 @@ function openPaymentModal() {
 
 document.getElementById("cashReceivedInput")?.addEventListener("input", () => {
     const received = Number(cashReceivedInput.value);
-    const total = Number(
-        document.getElementById("transactionTotal").textContent.replace("₱", "")
-    );
+
+    const total = Number(CashierState.balanceDue ?? 0);
+
 
     const method = CashierState.selectedPaymentMethod || "cash";
     const label = document.getElementById("paymentCalcLabel");
@@ -177,9 +186,8 @@ document.getElementById("cancelPaymentBtn")?.addEventListener("click", () => {
 
 document.getElementById("confirmPaymentBtn")?.addEventListener("click", async () => {
     const received = Number(cashReceivedInput.value);
-    const total = Number(
-        document.getElementById("transactionTotal").textContent.replace("₱", "")
-    );
+
+    const total = Number(CashierState.balanceDue ?? 0);
 
     const method = CashierState.selectedPaymentMethod || "cash";
     const reference = paymentReferenceInput.value.trim();
@@ -246,7 +254,7 @@ document.getElementById("confirmPaymentBtn")?.addEventListener("click", async ()
 
     openReceiptModal({
         receipt: d.receipt_number,
-        total: total,
+        balanceBeforePayment: total,
         paid: received,
         balance: d.balance,
         method: method
@@ -255,42 +263,49 @@ document.getElementById("confirmPaymentBtn")?.addEventListener("click", async ()
     showToast("Payment completed", "success");
 
 });
+
 function openReceiptModal(data) {
+
+    const totalBefore =
+        data.balanceBeforePayment ?? data.total ?? 0;
+
+    const paid =
+        data.paid ?? 0;
+
+    const balanceAfter =
+        data.balanceAfterPayment ?? data.balance ?? 0;
+
     document.getElementById("rReceiptNo").textContent = data.receipt;
-    document.getElementById("rDate").textContent = new Date().toLocaleString();
+    document.getElementById("rDate").textContent =
+        new Date().toLocaleString();
+
     document.getElementById("rCashier").textContent =
         CashierState.currentUser || "Cashier";
 
     document.getElementById("rTotal").textContent =
-        `₱${data.total.toFixed(2)}`;
+        `₱${Number(totalBefore).toFixed(2)}`;
 
     document.getElementById("rPaid").textContent =
-        `₱${data.paid.toFixed(2)}`;
+        `₱${Number(paid).toFixed(2)}`;
 
     document.getElementById("rBalance").textContent =
-        `₱${data.balance.toFixed(2)}`;
+        `₱${Number(balanceAfter).toFixed(2)}`;
 
     document.getElementById("rMethod").textContent =
-        data.method.toUpperCase();
+        (data.method || "").toUpperCase();
 
     const itemsBox = document.getElementById("rItems");
 
     const paymentLabel =
-        data.balance > 0 ? "PARTIAL PAYMENT" : "FULL PAYMENT";
+        balanceAfter > 0 ? "PARTIAL PAYMENT" : "FULL PAYMENT";
 
     itemsBox.innerHTML = `
         <div class="flex justify-between font-semibold">
             <span>${paymentLabel}</span>
-            <span>₱${data.paid.toFixed(2)}</span>
+            <span>₱${Number(paid).toFixed(2)}</span>
         </div>
 
-        ${data.reference ? `
-            <div class="text-[10px] mt-1 text-gray-600">
-                Reference: ${data.reference}
-            </div>
-        ` : ""}
-
-        ${data.balance > 0 ? `
+        ${balanceAfter > 0 ? `
             <div class="text-[10px] mt-1 text-gray-600">
                 Remaining balance recorded as Account Receivable
             </div>

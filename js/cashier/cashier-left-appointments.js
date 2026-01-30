@@ -345,28 +345,48 @@ appointmentsList.addEventListener("click", (e) => {
 
     if (card.dataset.status === "checked_in") {
 
-        // 🔥 HARD RESET UI STATE
-        CashierState.transactionLocked = false;
-        CashierState.pendingPayment = false;   // ← THIS FIXES IT
-        CashierState.selectedPaymentMethod = null;
-        CashierState.lockCountdownFinished = false;
+        const appointmentId = card.dataset.appointmentId;
 
+        // Ask backend first — NEVER GUESS
+        fetch(`../php/cashier/left/appointment-financial-status.php?appointment_id=${appointmentId}`)
+            .then(r => r.json())
+            .then(fin => {
+                if (!fin.success) {
+                    showToast("Failed to load financial status", "error");
+                    return;
+                }
 
-        lockPaymentUI();
-        unlockPaymentMethodUI(); // will be re-locked by loadTransaction if needed
+                // 🔵 NO TRANSACTION YET → WALK-IN / ADMIN FLOW
+                if (!fin.has_transaction) {
+                    createTransactionFromAppointment(appointmentId);
+                    highlightActiveAppointment(appointmentId);
+                    return;
+                }
 
-        closeAllServiceModals?.();
+                // 🟢 TRANSACTION EXISTS → ONLINE OR EXISTING FLOW
+                CashierState.activeAppointmentId = appointmentId;
+                CashierState.activeTransactionId = fin.transaction_id;
 
-        document.dispatchEvent(
-            new CustomEvent("appointment:loadTransaction", {
-                detail: { appointmentId: card.dataset.appointmentId }
-            })
-        );
+                // 🔒 DO NOT RESET PAYMENT STATE
+                CashierState.pendingPayment = false;
+                CashierState.lockCountdownFinished = false;
 
-        highlightActiveAppointment(card.dataset.appointmentId);
+                closeAllServiceModals?.();
+
+                document.dispatchEvent(
+                    new CustomEvent("appointment:checkedIn", {
+                        detail: {
+                            appointmentId,
+                            financial: fin
+                        }
+                    })
+                );
+
+                highlightActiveAppointment(appointmentId);
+            });
+
         return;
     }
-
 
     showToast("Please check-in the client first", "error");
 });

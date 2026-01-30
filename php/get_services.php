@@ -11,7 +11,8 @@ require_once "db.php";
    CATEGORIES
 ========================= */
 $categories = $conn->query("
-    SELECT * FROM service_categories
+    SELECT *
+    FROM service_categories
     ORDER BY created_at DESC
 ")->fetch_all(MYSQLI_ASSOC);
 
@@ -35,7 +36,8 @@ $allProducts = $conn->query("
    SERVICES
 ========================= */
 $services_result = $conn->query("
-    SELECT * FROM services
+    SELECT *
+    FROM services
     ORDER BY created_at DESC
 ");
 
@@ -56,31 +58,6 @@ while ($service = $services_result->fetch_assoc()) {
     $variant_stmt->execute();
     $variants = $variant_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
     $variant_stmt->close();
-
-    /* =========================
-       VARIANT PRODUCT ESTIMATES (NEW)
-    ========================= */
-    foreach ($variants as &$variant) {
-        $estimate_stmt = $conn->prepare("
-            SELECT
-                svpe.product_id,
-                svpe.estimated_quantity,
-                svpe.unit,
-                p.name,
-                p.price,
-                p.unit_per_item,
-                p.product_type
-            FROM service_variant_product_estimates svpe
-            JOIN products p ON p.id = svpe.product_id
-            WHERE svpe.service_variant_id = ?
-        ");
-        $estimate_stmt->bind_param("i", $variant['id']);
-        $estimate_stmt->execute();
-        $variant['estimates'] =
-            $estimate_stmt->get_result()->fetch_all(MYSQLI_ASSOC);
-        $estimate_stmt->close();
-    }
-    unset($variant); // important (PHP reference safety)
 
     /* =========================
        SERVICE PRODUCTS (BASE)

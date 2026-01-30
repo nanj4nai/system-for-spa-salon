@@ -1,7 +1,7 @@
 <?php
 session_start();
 if (!isset($_SESSION["user_id"])) {
-    header("Location: php/login");
+    header("Location: php/login.php");
     exit;
 }
 
@@ -79,6 +79,10 @@ $role = $_SESSION["role"];
                 <a href="staff.php" class="flex items-center gap-3 p-3 rounded-xl hover:bg-yellow-200 dark:hover:bg-yellow-700 transition">
                     <i data-lucide="badge-check" class="w-5 h-5"></i> Employees
                 </a>
+                <a href="admin-payment-approvals.php"
+                    class="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-200 dark:hover:bg-indigo-800 transition">
+                    <i data-lucide="clipboard-clock" class="w-5 h-5"></i> Booking Approvals
+                </a>
                 <a href="admin-shift-approvals.php"
                     class="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-200 dark:hover:bg-indigo-800 transition">
                     <i data-lucide="clipboard-check" class="w-5 h-5"></i>
@@ -154,7 +158,7 @@ $role = $_SESSION["role"];
         <!-- APPOINTMENT LIST + CHART -->
         <div class="grid md:grid-cols-2 gap-6 mt-6">
             <div class="bg-white dark:bg-gray-800 p-6 rounded-xl shadow border border-teal-200 dark:border-teal-700 transition">
-                <h3 class="text-lg font-semibold mb-3">Appointments Today</h3>
+                <h3 class="text-lg font-semibold mb-3">Active and Upcoming Appointments</h3>
                 <ul id="dueSoonList" class="space-y-3"></ul>
             </div>
 

@@ -63,7 +63,15 @@ if ($method === "GET") {
         $types .= "i";
     }
 
-    $where = $conditions ? "WHERE " . implode(" AND ", $conditions) : "";
+    $conditions[] = "
+        NOT (
+            a.source = 'online'
+            AND a.payment_rejected_at IS NOT NULL
+        )
+    ";
+
+    $where = "WHERE " . implode(" AND ", $conditions);
+
     $sql = "
         SELECT DISTINCT
             a.id,
@@ -71,6 +79,7 @@ if ($method === "GET") {
             a.start_time,
             a.end_time,
             a.status AS raw_status,
+            a.source,              -- 👈 ADD THIS
             a.checked_in_at,
             a.created_at,
             c.full_name AS client_name,
@@ -104,32 +113,71 @@ if ($method === "GET") {
         $row["has_receivable"] = (int)($row["has_receivable"] ?? 0);
         $row["transaction_status"] = $row["transaction_status"] ?? "editing";
 
-
         // --- Derive real status ---
         if (in_array($row["raw_status"], ["cancelled", "no_show"])) {
-            // Appointment explicitly cancelled or no-show
             $row["status"] = $row["raw_status"];
-        } elseif (!empty($row["transaction_id"])) {
+        }
+        // ===========================
+        // ONLINE BOOKING
+        // ===========================
+        elseif ($row["source"] === "online") {
 
-            if ($row["transaction_status"] === "cancelled") {
-                $row["status"] = "cancelled";
+            if (empty($row["transaction_id"])) {
+                // no transaction yet
+                $row["status"] = "pending";
+            } elseif ($row["transaction_status"] === "pending_verification") {
+                // 🔥 payment submitted but not approved
+                $row["status"] = "pending";
+            } else {
+                // 🔥 payment approved by admin
+                $row["status"] = "confirmed";
+            }
+        }
+        // ===========================
+        // WALK-IN / ADMIN BOOKING
+        //  ==========================  
+        else {
+
+            if ($row["checked_in_at"]) {
+                $row["status"] = "checked_in";
             } elseif ($row["payment_status"] === "paid") {
                 $row["status"] = "completed";
-            } else {
-                // partial / receivable / editing
+            } elseif ($row["has_receivable"]) {
+                // cashier explicitly marked AR
                 $row["status"] = "checked_in";
+            } else {
+                $row["status"] = $row["raw_status"];
             }
-        } else {
-            // No transaction yet
-            $row["status"] = $row["checked_in_at"]
-                ? "checked_in"
-                : $row["raw_status"];
         }
+
+        $row["payment_label"] = match (true) {
+            $row["source"] === "online"
+                && $row["transaction_status"] === "pending_verification" =>
+            "Pending Verification",
+
+            $row["source"] === "online"
+                && $row["payment_status"] === "partial" =>
+            "Deposit Paid",
+
+            $row["source"] === "online"
+                && $row["payment_status"] === "paid" =>
+            "Fully Paid",
+
+            $row["has_receivable"] =>
+            "Account Receivable",
+
+            default =>
+            null
+        };
+
+
         if (!empty($_GET["status"]) && $row["status"] !== $_GET["status"]) {
             continue;
         }
 
-        $row["usage_mode"] = !empty($row["transaction_id"])
+        $row["usage_mode"] =
+            !empty($row["transaction_id"])
+            && $row["transaction_status"] !== "pending_verification"
             ? "actual"
             : "planned";
 
@@ -161,7 +209,7 @@ if ($method === "GET") {
         FROM appointment_services aps
         JOIN services s ON aps.service_id = s.id
         LEFT JOIN service_variants v ON aps.variant_id = v.id
-        JOIN employees e ON aps.employee_id = e.id
+        LEFT JOIN employees e ON aps.employee_id = e.id
         WHERE aps.appointment_id IN ($placeholders)
         ";
 
@@ -185,7 +233,7 @@ if ($method === "GET") {
                     "service_id" => $row2["service_id"],
                     "service_name" => $row2["service_name"],
                     "variant_name" => $row2["variant_name"],
-                    "staff_name" => $row2["staff_name"],
+                    "staff_name" => $row2["staff_name"] ?? "Unassigned",
                     "price" => $row2["variant_price"] ?? $row2["base_price"],
                     "products" => []
                 ];
@@ -334,18 +382,25 @@ if ($method === "GET") {
 
         if (!$a["transaction_id"]) continue;
 
+        // 🔒 LOCK pricing if cashier total exists
+        if ($a["total_amount"] !== null) {
+            $a["pricing_breakdown"] = [
+                "subtotal"    => round($a["total_amount"] / (1 + $vatRate), 2),
+                "vat_rate"    => $vatRate * 100,
+                "vat_amount"  => round(
+                    $a["total_amount"] - ($a["total_amount"] / (1 + $vatRate)),
+                    2
+                ),
+                "grand_total" => (float)$a["total_amount"]
+            ];
+            continue;
+        }
+
+        // fallback (should rarely happen)
         $subtotal = 0;
 
         foreach ($a["services"] as $s) {
             $subtotal += (float)$s["price"];
-
-            foreach ($s["products"] ?? [] as $p) {
-                $subtotal += (float)$p["cost"];
-            }
-        }
-
-        foreach ($a["extra_products"] as $ep) {
-            $subtotal += (float)$ep["total_price"];
         }
 
         $vat = $subtotal * $vatRate;
@@ -357,6 +412,7 @@ if ($method === "GET") {
             "grand_total" => round($subtotal + $vat, 2)
         ];
     }
+
 
     echo json_encode(array_values($appointments));
     exit;

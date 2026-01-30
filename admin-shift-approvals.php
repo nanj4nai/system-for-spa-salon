@@ -70,11 +70,14 @@ $role = $_SESSION["role"];
                 <i data-lucide="home" class="w-5 h-5"></i> Dashboard
             </a>
 
+            <a href="admin-payment-approvals.php"
+                class="flex items-center gap-3 p-3 rounded-xl hover:bg-indigo-200 dark:hover:bg-indigo-800 transition">
+                <i data-lucide="clipboard-clock" class="w-5 h-5"></i> Booking Approvals
+            </a>
             <a href="admin-shift-approvals.php"
-                class="flex items-center gap-3 p-3 rounded-xl bg-indigo-200 dark:bg-indigo-800 transition">
+                class="flex items-center gap-3 p-3 rounded-xl bg-orange-200 dark:bg-orange-800 transition">
                 <i data-lucide="clipboard-check" class="w-5 h-5"></i> Shift Approvals
             </a>
-
             <a href="php/logout.php"
                 class="flex items-center gap-3 p-3 rounded-xl hover:bg-red-200 dark:hover:bg-red-800 mt-3 transition">
                 <i data-lucide="log-out" class="w-5 h-5"></i> Logout
@@ -112,16 +115,58 @@ $role = $_SESSION["role"];
         </div>
 
         <!-- TABS -->
-        <div class="flex gap-2 mb-6">
-            <button class="tab-btn active px-4 py-2 rounded-xl text-sm" data-tab="pending">
+        <div class="flex flex-wrap gap-2 mb-6">
+
+            <!-- Action button -->
+            <button
+                onclick="openOpenShiftModal()"
+                class="px-4 py-2 rounded-xl shadow
+               bg-indigo-600 text-white
+               hover:bg-indigo-700 transition">
+                Open Shift
+            </button>
+
+            <!-- ACTIVE TAB -->
+            <button
+                class="tab-btn px-4 py-2 rounded-xl text-sm transition
+               bg-indigo-600 text-white
+               hover:bg-indigo-700
+               dark:bg-indigo-500 dark:hover:bg-indigo-600"
+                data-tab="pending_open">
+                Awaiting Cashier
+            </button>
+
+            <!-- INACTIVE TABS -->
+            <button
+                class="tab-btn px-4 py-2 rounded-xl text-sm transition
+               bg-gray-200 text-gray-800
+               hover:bg-gray-300
+               dark:bg-gray-700 dark:text-gray-100
+               dark:hover:bg-gray-600"
+                data-tab="pending">
                 Pending Requests
             </button>
-            <button class="tab-btn px-4 py-2 rounded-xl bg-gray-200 dark:bg-gray-700 text-sm" data-tab="active">
+
+            <button
+                class="tab-btn px-4 py-2 rounded-xl text-sm transition
+               bg-gray-200 text-gray-800
+               hover:bg-gray-300
+               dark:bg-gray-700 dark:text-gray-100
+               dark:hover:bg-gray-600"
+                data-tab="active">
                 Active Shifts
             </button>
-            <button class="tab-btn px-4 py-2 rounded-xl bg-gray-200 dark:bg-gray-700 text-sm" data-tab="closed">
+
+            <button
+                class="tab-btn px-4 py-2 rounded-xl text-sm transition
+               bg-gray-200 text-gray-800
+               hover:bg-gray-300
+               dark:bg-gray-700 dark:text-gray-100
+               dark:hover:bg-gray-600"
+                data-tab="closed">
                 Closed Shifts
             </button>
+
         </div>
 
         <!-- TABLE -->
@@ -157,28 +202,58 @@ $role = $_SESSION["role"];
                 <h2 class="text-xl font-semibold mb-4">Shift Details</h2>
 
                 <!-- SUMMARY -->
-                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm mb-6">
+                <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 text-sm mb-6">
+
+                    <!-- OPENING -->
                     <div>
                         <p class="text-gray-400">Opening Cash</p>
                         <p id="sumOpening" class="font-semibold">—</p>
                     </div>
+
+                    <!-- GROSS SALES -->
                     <div>
-                        <p class="text-gray-400">Cash Sales</p>
+                        <p class="text-gray-400">Gross Sales</p>
+                        <p id="sumGross" class="font-semibold">—</p>
+                    </div>
+
+                    <!-- TOTAL COLLECTED -->
+                    <div>
+                        <p class="text-gray-400">Total Collected</p>
+                        <p id="sumCollected" class="font-semibold">—</p>
+                    </div>
+
+                    <!-- CASH ONLY -->
+                    <div>
+                        <p class="text-gray-400">Cash Collected</p>
                         <p id="sumCashSales" class="font-semibold">—</p>
                     </div>
+
+                    <!-- PAY LATER -->
+                    <div>
+                        <p class="text-gray-400">Pay-Later Balance</p>
+                        <p id="sumPayLater" class="font-semibold text-orange-600">—</p>
+                    </div>
+
+                    <!-- EXPECTED -->
                     <div>
                         <p class="text-gray-400">Expected Cash</p>
                         <p id="sumExpected" class="font-semibold">—</p>
                     </div>
+
+                    <!-- DECLARED -->
                     <div>
                         <p class="text-gray-400">Declared Cash</p>
                         <p id="sumClosing" class="font-semibold">—</p>
                     </div>
+
+                    <!-- VARIANCE -->
                     <div>
                         <p class="text-gray-400">Variance</p>
                         <p id="sumVariance" class="font-semibold">—</p>
                     </div>
+
                 </div>
+
 
                 <!-- TRANSACTIONS -->
                 <h3 class="font-semibold mb-2">Transactions</h3>
@@ -453,6 +528,31 @@ $role = $_SESSION["role"];
         </div>
     </main>
 
+    <div id="openShiftModal"
+        class="fixed inset-0 hidden bg-black/60 flex items-center justify-center z-50">
+        <div class="bg-white rounded-xl p-6 w-full max-w-sm">
+            <h3 class="font-semibold mb-4">Open Shift</h3>
+
+            <label class="text-sm">Cashier</label>
+            <select id="openShiftCashier"
+                class="w-full border rounded p-2 mb-3">
+                <!-- populated via PHP or JS -->
+            </select>
+
+            <div class="flex justify-end gap-2">
+                <button onclick="closeOpenShiftModal()"
+                    class="px-3 py-2 bg-gray-200 rounded">
+                    Cancel
+                </button>
+                <button onclick="confirmOpenShift()"
+                    class="px-3 py-2 bg-indigo-600 text-white rounded">
+                    Open Shift
+                </button>
+            </div>
+        </div>
+    </div>
+
+
     <script src="js/admin-shift-approvals.js"></script>
 
     <script>
@@ -478,6 +578,35 @@ $role = $_SESSION["role"];
                 );
                 lucide.createIcons();
             };
+        });
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                const clickedBtn = this; // 👈 now it exists
+
+                // Reset all tabs
+                document.querySelectorAll('.tab-btn').forEach(btn => {
+                    btn.classList.remove(
+                        'bg-indigo-600', 'text-white', 'hover:bg-indigo-700',
+                        'dark:bg-indigo-500', 'dark:hover:bg-indigo-600'
+                    );
+
+                    btn.classList.add(
+                        'bg-gray-200', 'text-gray-800', 'hover:bg-gray-300',
+                        'dark:bg-gray-700', 'dark:text-gray-100', 'dark:hover:bg-gray-600'
+                    );
+                });
+
+                // Activate clicked tab
+                clickedBtn.classList.remove(
+                    'bg-gray-200', 'text-gray-800', 'hover:bg-gray-300',
+                    'dark:bg-gray-700', 'dark:text-gray-100', 'dark:hover:bg-gray-600'
+                );
+
+                clickedBtn.classList.add(
+                    'bg-indigo-600', 'text-white', 'hover:bg-indigo-700',
+                    'dark:bg-indigo-500', 'dark:hover:bg-indigo-600'
+                );
+            });
         });
     </script>
 

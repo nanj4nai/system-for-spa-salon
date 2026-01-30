@@ -30,50 +30,78 @@ try {
        LOAD OLD SERVICE
     ===================== */
     $stmt = $conn->prepare("
-        SELECT appointment_id
-        FROM appointment_services
-        WHERE id = ?
+        SELECT 
+            a.source,
+            aps.appointment_id,
+            aps.service_id AS old_service_id,
+            aps.variant_id AS old_variant_id
+        FROM appointment_services aps
+        JOIN appointments a ON a.id = aps.appointment_id
+        WHERE aps.id = ?
     ");
     $stmt->bind_param("i", $appointment_service_id);
     $stmt->execute();
-    $old = $stmt->get_result()->fetch_assoc();
+    $row = $stmt->get_result()->fetch_assoc();
 
-    if (!$old) {
+    if (!$row) {
         throw new Exception("Service record not found");
     }
 
-    $appointment_id = $old['appointment_id'];
+    $appointment_id = (int)$row['appointment_id'];
 
     /* =====================
         DUPLICATE CHECK (EDIT)
     ===================== */
-    $stmt = $conn->prepare("
-            SELECT id
-            FROM appointment_services
-            WHERE appointment_id = ?
-            AND service_id = ?
-            AND (
-                (variant_id IS NULL AND ? IS NULL)
-                OR variant_id = ?
-            )
-            AND id != ?
-        ");
-    $stmt->bind_param(
-        "iiiii",
-        $appointment_id,
-        $service_id,
-        $variant_id,
-        $variant_id,
-        $appointment_service_id
-    );
-    $stmt->execute();
-
-    if ($stmt->get_result()->fetch_assoc()) {
-        throw new Exception(
-            $variant_id
-                ? "This service variant already exists"
-                : "This service already exists"
+    if ($row['source'] !== 'online') {
+        $stmt = $conn->prepare("
+        SELECT id
+        FROM appointment_services
+        WHERE appointment_id = ?
+        AND service_id = ?
+        AND (
+            (variant_id IS NULL AND ? IS NULL)
+            OR variant_id = ?
+        )
+        AND id != ?
+    ");
+        $stmt->bind_param(
+            "iiiii",
+            $appointment_id,
+            $service_id,
+            $variant_id,
+            $variant_id,
+            $appointment_service_id
         );
+        $stmt->execute();
+
+        if ($stmt->get_result()->fetch_assoc()) {
+            throw new Exception(
+                $variant_id
+                    ? "This service variant already exists"
+                    : "This service already exists"
+            );
+        }
+    }
+
+    if ($row['source'] === 'online') {
+
+        if ((int)$service_id !== (int)$row['old_service_id']) {
+            echo json_encode([
+                "success" => false,
+                "error" => "Online booking services cannot change service"
+            ]);
+            exit;
+        }
+
+        if ((int)$variant_id !== (int)$row['old_variant_id']) {
+            echo json_encode([
+                "success" => false,
+                "error" => "Online booking services cannot change variant"
+            ]);
+            exit;
+        }
+
+        // staff change allowed ✅
     }
 
     /* =====================

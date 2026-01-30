@@ -1,115 +1,161 @@
 <?php
 
-function getOpenShiftId(mysqli $conn, int $user_id = null)
+function getOpenShiftId(mysqli $conn, int $user_id): ?int
 {
+    $stmt = $conn->prepare("
+        SELECT id
+        FROM cashier_shifts
+        WHERE user_id = ?
+          AND status = 'open'
+          AND approval_status = 'approved'
+          AND is_active = 1
+        LIMIT 1
+    ");
+    $stmt->bind_param("i", $user_id);
+    $stmt->execute();
 
-    if ($user_id !== null) {
-        $stmt = $conn->prepare("
-            SELECT id
-            FROM cashier_shifts
-            WHERE status = 'open' AND user_id = ?
-            LIMIT 1
-        ");
-        $stmt->bind_param("i", $user_id);
-        $stmt->execute();
-        $res = $stmt->get_result();
-    } else {
-        $res = $conn->query("
-            SELECT id
-            FROM cashier_shifts
-            WHERE status = 'open'
-            LIMIT 1
-        ");
-    }
+    $row = $stmt->get_result()->fetch_assoc();
 
-    if ($res && $res->num_rows > 0) {
-        $row = $res->fetch_assoc();
-        return (int)$row['id'];
-    }
-
-    return null;
+    return $row ? (int)$row['id'] : null;
 }
+
 
 function recalcTransaction(mysqli $conn, int $transaction_id)
 {
     // =====================
-    // LOAD VAT SETTINGS
+    // LOAD TRANSACTION
     // =====================
     $stmt = $conn->prepare("
-        SELECT include_vat
+        SELECT appointment_id, include_vat, amount_paid
         FROM spa_transactions
         WHERE id = ?
         LIMIT 1
     ");
+    if (!$stmt) {
+        throw new Exception($conn->error);
+    }
+
     $stmt->bind_param("i", $transaction_id);
     $stmt->execute();
     $tx = $stmt->get_result()->fetch_assoc();
+    $stmt->close();
 
     if (!$tx) return;
 
-    $includeVat = (int)$tx['include_vat'];
+    $appointment_id = (int)$tx['appointment_id'];
+    $includeVat     = (int)$tx['include_vat'];
+    $amountPaid     = (float)$tx['amount_paid'];
 
-    // global VAT rate (settings table)
+    // =====================
+    // SEED TRANSACTION SERVICES (ONLY IF APPOINTMENT HAS SERVICES)
+    // =====================
+    $stmt = $conn->prepare("
+        SELECT COUNT(*) 
+        FROM spa_transaction_services 
+        WHERE transaction_id = ?
+    ");
+    if (!$stmt) {
+        throw new Exception($conn->error);
+    }
+
+    $stmt->bind_param("i", $transaction_id);
+    $stmt->execute();
+    $stmt->bind_result($existingCount);
+    $stmt->fetch();
+    $stmt->close();
+
+    if ($existingCount === 0) {
+
+        // Check if appointment has services at all
+        $stmt = $conn->prepare("
+            SELECT COUNT(*) 
+            FROM appointment_services 
+            WHERE appointment_id = ?
+        ");
+        if (!$stmt) {
+            throw new Exception($conn->error);
+        }
+
+        $stmt->bind_param("i", $appointment_id);
+        $stmt->execute();
+        $stmt->bind_result($apptServiceCount);
+        $stmt->fetch();
+        $stmt->close();
+
+        if ($apptServiceCount > 0) {
+            $stmt = $conn->prepare("
+                INSERT INTO spa_transaction_services
+                (
+                    transaction_id,
+                    appointment_service_id,
+                    service_id,
+                    employee_id,
+                    quantity,
+                    unit_price,
+                    total_price
+                )
+                SELECT
+                    ?,
+                    aps.id,
+                    aps.service_id,
+                    aps.employee_id,
+                    1,
+                    COALESCE(v.price, s.base_price),
+                    COALESCE(v.price, s.base_price)
+                FROM appointment_services aps
+                JOIN services s ON s.id = aps.service_id
+                LEFT JOIN service_variants v ON v.id = aps.variant_id
+                WHERE aps.appointment_id = ?
+            ");
+            if (!$stmt) {
+                throw new Exception($conn->error);
+            }
+
+            $stmt->bind_param("ii", $transaction_id, $appointment_id);
+            $stmt->execute();
+            $stmt->close();
+        }
+    }
+
+    // =====================
+    // TOTALS
+    // =====================
     $vatRate = 0.12;
 
-    // =====================
-    // SERVICES TOTAL
-    // =====================
+    // SERVICES
     $stmt = $conn->prepare("
         SELECT COALESCE(SUM(total_price), 0)
         FROM spa_transaction_services
         WHERE transaction_id = ?
     ");
+    if (!$stmt) {
+        throw new Exception($conn->error);
+    }
+
     $stmt->bind_param("i", $transaction_id);
     $stmt->execute();
-    $serviceTotal = (float)$stmt->get_result()->fetch_row()[0];
+    $stmt->bind_result($serviceTotal);
+    $stmt->fetch();
+    $stmt->close();
 
-    // =====================
-    // CONSUMABLE TOTAL
-    // =====================
-    $stmt = $conn->prepare("
-        SELECT COALESCE(SUM(
-            CASE
-                WHEN p.unit_per_item > 0
-                THEN (asp.quantity_used / p.unit_per_item) * p.price
-                ELSE 0
-            END
-        ), 0)
-        FROM spa_transaction_services ts
-        JOIN appointment_services aps ON aps.id = ts.appointment_service_id
-        JOIN appointment_service_products asp ON asp.appointment_service_id = aps.id
-        JOIN products p ON p.id = asp.product_id
-        WHERE ts.transaction_id = ?
-        AND p.product_type = 'consumable'
-    ");
-    $stmt->bind_param("i", $transaction_id);
-    $stmt->execute();
-    $consumableTotal = (float)$stmt->get_result()->fetch_row()[0];
-
-    // =====================
     // EXTRA PRODUCTS
-    // =====================
     $stmt = $conn->prepare("
         SELECT COALESCE(SUM(total_price), 0)
         FROM product_sales
         WHERE transaction_id = ?
     ");
+    if (!$stmt) {
+        throw new Exception($conn->error);
+    }
+
     $stmt->bind_param("i", $transaction_id);
     $stmt->execute();
-    $extraProductTotal = (float)$stmt->get_result()->fetch_row()[0];
+    $stmt->bind_result($extraProductTotal);
+    $stmt->fetch();
+    $stmt->close();
 
-    // =====================
-    // SUBTOTAL
-    // =====================
-    $subtotal = $serviceTotal + $consumableTotal + $extraProductTotal;
-
-    // =====================
-    // VAT
-    // =====================
-    $vatAmount = $includeVat
-        ? round($subtotal * $vatRate, 2)
-        : 0;
-
+    $subtotal  = (float)$serviceTotal + (float)$extraProductTotal;
+    $vatAmount = $includeVat ? round($subtotal * $vatRate, 2) : 0;
     $grandTotal = $subtotal + $vatAmount;
 
     // =====================
@@ -127,6 +173,10 @@ function recalcTransaction(mysqli $conn, int $transaction_id)
             END
         WHERE id = ?
     ");
+    if (!$stmt) {
+        throw new Exception($conn->error);
+    }
+
     $stmt->bind_param(
         "dddi",
         $grandTotal,
@@ -135,8 +185,8 @@ function recalcTransaction(mysqli $conn, int $transaction_id)
         $transaction_id
     );
     $stmt->execute();
+    $stmt->close();
 }
-
 
 function getServiceProductUsage(mysqli $conn, int $transaction_id): array
 {

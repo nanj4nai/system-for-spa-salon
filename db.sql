@@ -163,7 +163,6 @@ CREATE TABLE service_products (
     UNIQUE (service_id, product_id)
 );
 
-
 -- =====================
 -- STAFF COMMISSIONS
 -- =====================
@@ -406,7 +405,10 @@ ADD FOREIGN KEY (appointment_id)
     ON DELETE SET NULL;
 
 
-
+ALTER TABLE cashier_shifts
+ADD COLUMN active_user_id INT(11) NULL AFTER is_active;
+CREATE INDEX idx_cashier_shifts_active_user
+ON cashier_shifts(active_user_id);
 
 -- update to log the check-in time and staff
 ALTER TABLE appointments
@@ -437,6 +439,16 @@ ADD transaction_type ENUM(
 ALTER TABLE appointments
 ADD COLUMN source ENUM('online','admin','cashier') NOT NULL DEFAULT 'online';
 
+ALTER TABLE payments
+ADD COLUMN source ENUM('online', 'cashier')
+NOT NULL DEFAULT 'cashier'
+AFTER payment_method;
+
+
+ALTER TABLE spa_transactions
+ADD COLUMN subtotal DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER has_receivable,
+ADD COLUMN vat_rate DECIMAL(5,2)  NOT NULL DEFAULT 0.00 AFTER subtotal,
+ADD COLUMN vat_amount DECIMAL(10,2) NOT NULL DEFAULT 0.00 AFTER vat_rate;
 
 
 -- actual usage of products per appointment service
@@ -458,6 +470,7 @@ CREATE TABLE appointment_service_products (
     FOREIGN KEY (product_id)
         REFERENCES products(id)
 );
+
 -- quantity for appointment services 
 ALTER TABLE appointment_services
 ADD COLUMN quantity INT NOT NULL DEFAULT 1;
@@ -481,8 +494,12 @@ CREATE TABLE appointment_extra_products (
 );
 -- status for transactions
 ALTER TABLE spa_transactions
-ADD COLUMN status ENUM('editing','locked','paid','cancelled')
-DEFAULT 'editing';
+MODIFY status ENUM(
+  'pending_verification',
+  'editing',
+  'finalized',
+  'cancelled'
+) NOT NULL DEFAULT 'editing';
 
 -- include vat flag
 ALTER TABLE spa_transactions
@@ -514,6 +531,7 @@ ADD COLUMN approved_at DATETIME NULL;
 -- modify status enum
 ALTER TABLE cashier_shifts
 MODIFY status ENUM(
+  'pending_open',
   'open',
   'pending_close',
   'closed'
@@ -572,24 +590,53 @@ ADD COLUMN reference_number VARCHAR(100) NULL;
 ALTER TABLE spa_transactions
 ADD UNIQUE KEY uniq_transaction_per_appointment (appointment_id);
 
-CREATE TABLE service_variant_product_estimates (
+CREATE TABLE booking_price_snapshots (
     id INT AUTO_INCREMENT PRIMARY KEY,
+    appointment_id INT NOT NULL,
 
-    service_variant_id INT NOT NULL,
-    product_id INT NOT NULL,
-
-    estimated_quantity DECIMAL(10,2) NOT NULL,
-    unit ENUM('ml','mg','pcs') NOT NULL,
+    subtotal DECIMAL(10,2),
+    discount DECIMAL(10,2),
+    vat DECIMAL(10,2),
+    total DECIMAL(10,2),
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
-    FOREIGN KEY (service_variant_id)
-        REFERENCES service_variants(id)
-        ON DELETE CASCADE,
-
-    FOREIGN KEY (product_id)
-        REFERENCES products(id)
-        ON DELETE CASCADE,
-
-    UNIQUE (service_variant_id, product_id)
+    FOREIGN KEY (appointment_id)
+        REFERENCES appointments(id)
+        ON DELETE CASCADE
 );
+ALTER TABLE appointment_services
+MODIFY employee_id INT NULL;
+
+ALTER TABLE spa_transaction_services
+MODIFY employee_id INT NULL;
+
+ALTER TABLE settings
+ADD COLUMN gcash_number VARCHAR(50) NULL,
+ADD COLUMN gcash_qr_path VARCHAR(255) NULL;
+ALTER TABLE settings
+ADD COLUMN email VARCHAR(255) AFTER contact_number;
+ALTER TABLE appointments
+ADD COLUMN payment_rejection_reason TEXT NULL,
+ADD COLUMN payment_rejected_at DATETIME NULL,
+ADD COLUMN payment_rejected_by INT NULL;
+
+CREATE INDEX idx_clients_email
+ON clients (email);
+
+-- can get error if two clients have same contact number or null
+CREATE UNIQUE INDEX uq_clients_contact
+ON clients (contact_number);
+
+ALTER TABLE appointments
+ADD last_email_sent_at DATETIME NULL,
+ADD last_email_type ENUM('approved','rejected') NULL;
+
+ALTER TABLE spa_transactions
+ADD UNIQUE KEY uniq_appointment_transaction (appointment_id);
+
+
+ALTER TABLE cashier_shifts ADD COLUMN opened_by INT NULL AFTER user_id, ADD FOREIGN KEY (opened_by) REFERENCES users(id);
+ALTER TABLE accounts_receivable
+ADD COLUMN ar_type ENUM('pay_later', 'online_tracking') DEFAULT 'pay_later';
+

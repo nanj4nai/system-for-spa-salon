@@ -15,6 +15,7 @@ let arTransactionId = null;
 let currentReceivable = null;
 let currentReceivableId = null;
 let currentViewedTransactionId = null;
+let gateCashierId = null;
 
 function formatDateSafe(value) {
     if (!value) return "—";
@@ -26,21 +27,18 @@ function formatDateSafe(value) {
 }
 
 function renderARBadge(s) {
-    const hasAR = Number(s.ar_count) > 0;
+    const count = Number(s.ar_count);
+    if (!count) {
+        return `<span class="text-xs text-gray-400 italic">None</span>`;
+    }
 
-    return hasAR
-        ? `
-        <span class="inline-flex items-center gap-1
-            px-2 py-1 text-xs rounded
-            bg-orange-100 text-orange-700 font-semibold">
-            ⚠ ${s.ar_count} · ₱${Number(s.ar_balance).toFixed(2)}
-        </span>`
-        : `
-        <span class="text-xs text-gray-400 italic">
-            None
-        </span>`;
+    return `
+    <span class="inline-flex items-center gap-1
+        px-2 py-1 text-xs rounded
+        bg-orange-100 text-orange-700 font-semibold">
+        💼 Pay-Later · ${count} · ₱${Number(s.ar_balance).toFixed(2)}
+    </span>`;
 }
-
 
 /* =====================================================
    TAB HANDLING
@@ -61,9 +59,11 @@ tabs.forEach(btn => {
 ===================================================== */
 function loadShifts() {
     let action =
-        currentTab === "pending" ? "list_pending" :
-            currentTab === "active" ? "list_active" :
-                "list_closed";
+        currentTab === "pending_open" ? "list_pending_open" :
+            currentTab === "pending" ? "list_pending" :
+                currentTab === "active" ? "list_active" :
+                    "list_closed";
+
 
     fetch("php/shift-approvals.php", {
         method: "POST",
@@ -125,6 +125,29 @@ function renderTable(shifts) {
     }
 
     table.innerHTML = shifts.map(s => {
+        /* ---------- PENDING OPEN ---------- */
+        if (currentTab === "pending_open") {
+            return `
+            <tr class="border-b bg-blue-50/40">
+                <td class="py-3 font-medium">${s.username}</td>
+                <td>${formatDateSafe(s.opened_at)}</td>
+
+                <td>
+                    <span class="px-2 py-1 text-xs rounded
+                        bg-blue-100 text-blue-700 font-semibold">
+                        Waiting for cashier
+                    </span>
+                </td>
+
+                <td class="text-right">
+                    <button onclick="cancelGate(${s.id})"
+                        class="px-3 py-1 text-xs bg-red-600 text-white rounded">
+                        Cancel Gate
+                    </button>
+                </td>
+            </tr>`;
+        }
+
 
         /* ---------- PENDING ---------- */
         if (currentTab === "pending") {
@@ -174,7 +197,6 @@ function renderTable(shifts) {
             </tr>`;
         }
 
-        /* ---------- ACTIVE ---------- */
         /* ---------- ACTIVE ---------- */
         if (currentTab === "active") {
             const hasAR = Number(s.ar_count) > 0;
@@ -253,6 +275,78 @@ function postAction(action, id) {
         .then(() => loadShifts());
 }
 
+function cancelGate(id) {
+    if (!confirm("Cancel this open gate?")) return;
+
+    fetch("php/shift-approvals.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `action=cancel_gate&shift_id=${id}`
+    })
+        .then(r => r.json())
+        .then(() => loadShifts());
+}
+
+function loadCashiersForOpenShift() {
+    const select = document.getElementById("openShiftCashier");
+    select.innerHTML = `<option value="">Loading…</option>`;
+
+    fetch("php/shift-approvals.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: "action=list_cashiers"
+    })
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success || !d.cashiers.length) {
+                select.innerHTML =
+                    `<option value="">No available cashiers</option>`;
+                return;
+            }
+
+            select.innerHTML =
+                `<option value="">Select cashier</option>` +
+                d.cashiers.map(c =>
+                    `<option value="${c.id}">${c.username}</option>`
+                ).join("");
+        });
+}
+function openOpenShiftModal() {
+    loadCashiersForOpenShift();
+    document.getElementById("openShiftModal")
+        .classList.remove("hidden");
+}
+
+function closeOpenShiftModal() {
+    document.getElementById("openShiftModal")
+        .classList.add("hidden");
+}
+
+
+function confirmOpenShift() {
+    const cashierId = document.getElementById("openShiftCashier").value;
+
+    if (!cashierId) {
+        alert("Select a cashier");
+        return;
+    }
+
+    fetch("php/shift-approvals.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: `action=open_shift&cashier_id=${cashierId}`
+    })
+        .then(r => r.json())
+        .then(d => {
+            if (!d.success) {
+                alert(d.error || "Failed to open gate");
+                return;
+            }
+
+            closeOpenShiftModal();
+            loadShifts();
+        });
+}
 
 /* =====================================================
    SHIFT DETAILS MODAL
@@ -271,8 +365,19 @@ function viewDetails(shiftId) {
 }
 
 function resetSummary() {
-    ["sumOpening", "sumCashSales", "sumExpected", "sumClosing", "sumVariance"]
-        .forEach(id => document.getElementById(id).textContent = "—");
+    [
+        "sumOpening",
+        "sumGross",
+        "sumCollected",
+        "sumCashSales",
+        "sumPayLater",
+        "sumExpected",
+        "sumClosing",
+        "sumVariance"
+    ].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = "—";
+    });
 
     document.getElementById("transactionTable").innerHTML =
         `<tr><td colspan="6" class="p-4 text-center text-gray-400">Loading…</td></tr>`;
@@ -293,19 +398,22 @@ function loadSummary(shiftId) {
             if (!d.success) return;
 
             const s = d.summary;
-            document.getElementById("sumOpening").textContent = `₱${Number(s.opening_cash).toFixed(2)}`;
-            document.getElementById("sumCashSales").textContent = `₱${Number(s.cash_sales).toFixed(2)}`;
-            document.getElementById("sumExpected").textContent = `₱${Number(s.expected_cash).toFixed(2)}`;
-            document.getElementById("sumClosing").textContent = `₱${Number(s.closing_cash).toFixed(2)}`;
 
-            const v = document.getElementById("sumVariance");
-            v.textContent = `₱${Number(s.variance).toFixed(2)}`;
-            v.className = s.variance == 0
-                ? "font-semibold text-green-600"
-                : "font-semibold text-red-600";
+            sumOpening.textContent = `₱${Number(s.opening_cash).toFixed(2)}`;
+            sumGross.textContent = `₱${Number(s.gross_sales).toFixed(2)}`;
+            sumCollected.textContent = `₱${Number(s.total_collected).toFixed(2)}`;
+            sumCashSales.textContent = `₱${Number(s.cash_collected).toFixed(2)}`;
+            sumPayLater.textContent = `₱${Number(s.pay_later_balance).toFixed(2)}`;
+            sumExpected.textContent = `₱${Number(s.expected_cash).toFixed(2)}`;
+            sumClosing.textContent = `₱${Number(s.closing_cash).toFixed(2)}`;
+
+            sumVariance.textContent = `₱${Number(s.variance).toFixed(2)}`;
+            sumVariance.className =
+                s.variance == 0
+                    ? "font-semibold text-green-600"
+                    : "font-semibold text-red-600";
         });
 }
-
 
 /* =====================================================
    TRANSACTIONS LIST
@@ -331,7 +439,10 @@ function loadTransactions(shiftId) {
 
 function renderTransactionRow(t) {
     const hasBalance = Number(t.balance_due) > 0;
-    const canMarkAR = hasBalance && !t.has_receivable;
+    const canMarkAR =
+        hasBalance &&
+        !t.has_receivable &&
+        t.transaction_type !== "booking_payment";
 
     return `
     <tr class="border-b ${hasBalance ? 'bg-red-50' : ''}">
@@ -424,16 +535,15 @@ function openTransactionModal(transactionId) {
             if (d.receivable) {
                 arSection.classList.remove("hidden");
 
-                currentReceivable = d.receivable;
-                currentReceivableId = d.receivable.id;
+                const typeLabel =
+                    d.receivable.ar_type === "online_tracking"
+                        ? `<span class="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">Online Tracking</span>`
+                        : `<span class="text-xs px-2 py-1 rounded bg-orange-100 text-orange-700">Pay Later</span>`;
 
-                arAmountView.textContent = `₱${Number(d.receivable.amount).toFixed(2)}`;
-                arBalanceView.textContent = `₱${Number(d.receivable.balance).toFixed(2)}`;
-                arStatusView.textContent = d.receivable.status;
-                arRemarksView.textContent = d.receivable.remarks || "—";
+                arTypeView.innerHTML = typeLabel;
 
-                // Hide pay button if fully paid
-                if (Number(d.receivable.balance) <= 0) {
+                // 🔒 Disable payments for online tracking
+                if (d.receivable.ar_type === "online_tracking") {
                     payARBtn.classList.add("hidden");
                 } else {
                     payARBtn.classList.remove("hidden");

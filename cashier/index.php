@@ -20,8 +20,9 @@ $username     = $_SESSION['username'] ?? 'Cashier';
 
 <head>
     <meta charset="UTF-8" />
-    <title>Cashier — Wellness Spa</title>
+    <title>Cashier — <?= htmlspecialchars($company_name) ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="icon" type="image/png" href="<?= htmlspecialchars('../' . $company_logo) ?>?v=<?= time() ?>" />
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -100,57 +101,82 @@ $username     = $_SESSION['username'] ?? 'Cashier';
 <body class="h-full font-sans bg-gray-100 dark:bg-gray-900 text-gray-800 dark:text-gray-100">
 
     <!-- ================= NO SHIFT OVERLAY ================= -->
-    <div id="noShiftOverlay"
-        class="fixed inset-0 z-50 flex items-center justify-center
-            bg-gray-900/80 backdrop-blur-sm hidden">
+    <div id="noShiftOverlay" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/80 backdrop-blur-sm hidden">
 
         <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 w-full max-w-md text-center shadow-xl">
-            <h2 class="text-2xl font-semibold mb-2">No Active Shift</h2>
-            <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
-                You must open a shift before using the cashier system.
-            </p>
-
-            <div class="mb-4">
-                <label class="block text-sm font-medium mb-1">Opening Cash</label>
-                <input id="openingCash" type="number" placeholder="0.00"
-                    class="w-full px-4 py-2 rounded-lg border border-gray-300
-                    dark:border-gray-600 dark:bg-gray-700 outline-none">
+            <!-- BLOCKED MESSAGE -->
+            <div id="blockedMessage" class="hidden">
+                <h2 class="text-2xl font-semibold mb-2">Shift Not Opened</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                    Waiting for admin to open your shift gate.
+                </p>
             </div>
 
-            <button id="openShiftBtn"
-                class="w-full bg-green-500 hover:bg-green-600
-                   text-white py-3 rounded-xl font-semibold">
-                Open Shift
+            <!-- AWAITING OPEN (OPENING CASH) -->
+            <div id="awaitingOpenSection" class="hidden">
+                <h2 class="text-2xl font-semibold mb-2">Start Shift</h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400 mb-6">
+                    Enter opening cash to begin your shift.
+                </p>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium mb-1">Opening Cash</label>
+                    <input id="openingCash" type="number" placeholder="0.00"
+                        class="w-full px-4 py-2 rounded-lg border border-gray-300
+                   dark:border-gray-600 dark:bg-gray-700 outline-none">
+                </div>
+
+                <button id="openShiftBtn"
+                    class="w-full bg-green-500 hover:bg-green-600
+               text-white py-3 rounded-xl font-semibold">
+                    Start Shift
+                </button>
+            </div>
+
+            <!-- LOGOUT -->
+            <button id="logoutBtn"
+                class="mt-4 w-full bg-gray-300 hover:bg-gray-400
+           text-gray-800 py-2 rounded-xl font-medium">
+                Log out
             </button>
+
         </div>
     </div>
+
     <!-- ================= WAITING FOR ADMIN OVERLAY ================= -->
     <div id="pendingApprovalOverlay"
-        class="fixed inset-0 z-40 hidden flex items-center justify-center
-           bg-gray-900/60 backdrop-blur-sm">
+        class="fixed inset-0 z-50 hidden flex items-center justify-center
+            bg-gray-900/60 backdrop-blur-sm">
 
+        <!-- ================= SHIFT SUMMARY MODAL ================= -->
         <div class="bg-white dark:bg-gray-800 rounded-2xl
-                p-8 w-full max-w-md text-center shadow-xl">
+                w-full max-w-4xl max-h-[85vh]
+                shadow-xl flex flex-col overflow-hidden">
 
-            <div class="flex justify-center mb-4">
-                <svg class="animate-spin h-8 w-8 text-yellow-500"
-                    xmlns="http://www.w3.org/2000/svg"
-                    fill="none" viewBox="0 0 24 24">
-                    <circle class="opacity-25" cx="12" cy="12" r="10"
-                        stroke="currentColor" stroke-width="4"></circle>
-                    <path class="opacity-75" fill="currentColor"
-                        d="M4 12a8 8 0 018-8v8z"></path>
-                </svg>
+            <!-- HEADER -->
+            <div class="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 class="text-xl font-semibold">
+                    Shift Pending Admin Approval
+                </h2>
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                    This shift is locked. Review-only access.
+                </p>
             </div>
 
-            <h2 class="text-xl font-semibold mb-2">
-                Waiting for Admin…
-            </h2>
+            <!-- BODY (SCROLLABLE) -->
+            <div id="shiftSummaryView"
+                class="flex-1 overflow-y-auto p-6 space-y-6 text-sm">
 
-            <p class="text-sm text-gray-500 dark:text-gray-400">
-                Your shift close request is under review.<br>
-                The system is temporarily locked.
-            </p>
+                <div class="text-center text-gray-400 italic">
+                    Loading shift summary…
+                </div>
+            </div>
+
+            <!-- FOOTER -->
+            <div class="px-6 py-4 border-t border-gray-200 dark:border-gray-700
+                    text-xs text-gray-500 text-center">
+                Waiting for admin approval. Editing and payments are disabled.
+            </div>
         </div>
     </div>
 
@@ -233,9 +259,24 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                         Review totals and complete payment
                     </p>
                 </div>
+                <!-- TIPS -->
+                <div class="panel-tip hidden mb-3 p-3 rounded-lg
+            bg-teal-50 dark:bg-teal-900/30
+            text-[11px] text-teal-700 dark:text-teal-300
+            border border-teal-200 dark:border-teal-800">
+
+                    💡<strong>3.</strong>
+                    Review services and products carefully before payment.
+                    VAT and payment method can still be adjusted.
+                </div>
+
 
                 <!-- BREAKDOWN -->
                 <div id="paymentBreakdown" class="flex-1 space-y-4 text-sm overflow-y-auto">
+                    <div class="panel-tip hidden text-[11px] text-gray-400 mb-2 pl-1">
+                        Tip: Items listed here come from the active transaction.
+                    </div>
+
 
                     <!-- SERVICES -->
                     <div>
@@ -275,16 +316,15 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                         </div>
 
                         <div class="flex justify-between text-xs">
-                            <span>Consumables</span>
-                            <span id="consumablesTotal">₱0.00</span>
-                        </div>
-
-                        <div class="flex justify-between text-xs">
                             <span>Extra Products</span>
                             <span id="extraProductsTotal">₱0.00</span>
                         </div>
 
                         <div class="border-t border-gray-200 dark:border-gray-700 pt-2"></div>
+
+                        <div class="panel-tip hidden text-[11px] text-gray-400 mb-1 text-left">
+                            Tip: Toggle VAT if the customer requests VAT-inclusive pricing.
+                        </div>
 
                         <!-- VAT -->
                         <div class="flex items-center justify-between text-xs">
@@ -328,9 +368,28 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                         </div>
                         <!-- PAYMENT STATUS -->
                         <div
+                            class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700
+                                space-y-1 text-xs">
+                            <div
+                                id="paymentReferenceRow"
+                                class="flex justify-between hidden">
+                                <span class="text-gray-500">Reference</span>
+                                <span
+                                    id="paymentReferenceLabel"
+                                    class="font-mono text-[11px]">
+                                    —
+                                </span>
+                            </div>
+
+                            <div id="paymentReceiptList" class="mt-2 space-y-1"></div>
+                        </div>
+                        <div
                             id="paymentStatusBox"
                             class="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700
-           space-y-1 text-xs">
+                                space-y-1 text-xs">
+                            <div class="panel-tip hidden text-[11px] text-gray-400 text-center">
+                                Tip: Full payment or Mark as Account Receivable is required before closing the transaction.
+                            </div>
 
                             <div class="flex justify-between">
                                 <span class="text-gray-500">Payment Status</span>
@@ -350,38 +409,33 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                                 <span class="text-gray-500">Balance</span>
                                 <span id="balanceLabel">₱0.00</span>
                             </div>
-
-                            <div class="flex justify-between">
-                                <span class="text-gray-500">Change</span>
-                                <span id="changeLabel">₱0.00</span>
-                            </div>
-
                             <div
-                                id="paymentReferenceRow"
-                                class="flex justify-between hidden">
-                                <span class="text-gray-500">Reference</span>
-                                <span
-                                    id="paymentReferenceLabel"
-                                    class="font-mono text-[11px]">
-                                    —
-                                </span>
+                                id="balanceHelper"
+                                class="text-[11px] text-gray-400 text-right">
                             </div>
 
-                            <div id="paymentReceiptList" class="mt-2 space-y-1"></div>
+
                         </div>
 
                         <!-- TOTAL -->
                         <div
                             class="mt-3 pt-3 border-t border-gray-300 dark:border-gray-600
-                       flex justify-between text-lg font-semibold text-emerald-600">
-                            <span>Total</span>
+                                flex justify-between text-sm font-medium text-gray-500">
+                            <span>Original Total</span>
                             <span id="transactionTotal">₱0.00</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">Change</span>
+                            <span id="changeLabel">₱0.00</span>
                         </div>
                     </div>
                 </div>
+                <div class="panel-tip hidden text-[11px] text-gray-400 mt-2 mb-3 text-center">
+                    Tip: The payment button activates once a valid method is selected.
+                </div>
 
                 <!-- ACTION -->
-                <button
+                <button data-mutation
                     id="payBtn"
                     disabled
                     class="mt-4 w-full bg-emerald-600 hover:bg-emerald-700
@@ -408,7 +462,7 @@ $username     = $_SESSION['username'] ?? 'Cashier';
             <!-- HEADER -->
             <div class="mb-5">
                 <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                    Review & Confirm Transaction
+                    Review & Confirm Payment
                 </h3>
                 <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
                     Please confirm the details before locking this transaction.
@@ -463,11 +517,6 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                 </div>
 
                 <div class="flex justify-between">
-                    <span class="text-gray-600 dark:text-gray-400">Consumables</span>
-                    <span id="lockConsumablesTotal">₱0.00</span>
-                </div>
-
-                <div class="flex justify-between">
                     <span class="text-gray-600 dark:text-gray-400">Extra Products</span>
                     <span id="lockExtraProductsTotal">₱0.00</span>
                 </div>
@@ -487,6 +536,16 @@ $username     = $_SESSION['username'] ?? 'Cashier';
                     <span>Total</span>
                     <span id="lockGrandTotal">₱0.00</span>
                 </div>
+                <div class="flex justify-between text-xs">
+                    <span>Already Paid</span>
+                    <span id="lockPaidTotal">₱0.00</span>
+                </div>
+
+                <div class="flex justify-between text-xs font-semibold text-amber-600">
+                    <span>Balance Due</span>
+                    <span id="lockBalanceDue">₱0.00</span>
+                </div>
+
                 <!-- PAYMENT METHOD SUMMARY -->
                 <div class="mt-3 pt-2 border-t border-gray-200 dark:border-gray-700
             flex justify-between text-sm">
@@ -875,6 +934,7 @@ $username     = $_SESSION['username'] ?? 'Cashier';
     <script src="../js/cashier/cashier-ui.js"></script>
     <script src="../js/cashier/cashier-uinicon.js"></script>
     <script src="../js/cashier/cashier-shift.js"></script>
+    <script src="../js/cashier/cashier-shift-close.js"></script>
 
     <!-- MUST be before left-transaction -->
     <script src="../js/cashier/cashier-right-payment.js"></script>

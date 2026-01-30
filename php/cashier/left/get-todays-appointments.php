@@ -12,8 +12,10 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'cashier') {
     exit;
 }
 
+$user_id = $_SESSION['user_id'];
+
 /* =====================
-   FETCH TODAY'S APPOINTMENTS
+   FETCH TODAY'S APPOINTMENTS + CURRENT VALID SHIFT
 ===================== */
 $sql = "
     SELECT
@@ -32,7 +34,9 @@ $sql = "
 
         MAX(t.id) AS transaction_id,
         MAX(t.payment_status) AS payment_status,
-        MAX(t.is_receivable) AS is_receivable  -- 🔥 ADD THIS
+        MAX(t.is_receivable) AS is_receivable,
+
+        cs.id AS shift_id
 
     FROM appointments a
     JOIN clients c ON c.id = a.client_id
@@ -45,6 +49,12 @@ $sql = "
     LEFT JOIN spa_transactions t
         ON t.appointment_id = a.id
 
+    LEFT JOIN cashier_shifts cs
+        ON cs.user_id = ?
+        AND cs.status = 'open'
+        AND cs.is_active = 1
+        AND cs.active_user_id IS NOT NULL
+
     WHERE
         a.appointment_date = CURDATE()
         AND a.status IN ('confirmed', 'checked_in')
@@ -54,17 +64,21 @@ $sql = "
         a.start_time,
         a.status,
         a.source,
-        c.full_name
+        c.full_name,
+        cs.id
 
     ORDER BY
         a.status = 'checked_in' DESC,
         a.start_time ASC
 ";
 
-$res = $conn->query($sql);
+$stmt = $conn->prepare($sql);
+$stmt->bind_param("i", $user_id);
+$stmt->execute();
+
+$res = $stmt->get_result();
 
 $appointments = [];
-
 while ($row = $res->fetch_assoc()) {
     $appointments[] = $row;
 }

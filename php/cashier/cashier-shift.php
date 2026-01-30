@@ -21,9 +21,16 @@ $action  = $_POST['action'] ?? '';
 if ($action === 'status') {
 
     $stmt = $conn->prepare("
-        SELECT id, status, opened_at
+        SELECT
+            id,
+            status,
+            active_user_id,
+            approval_status,
+            remarks,
+            approved_at
         FROM cashier_shifts
         WHERE user_id = ?
+          AND status IN ('pending_open','open','pending_close')
         ORDER BY opened_at DESC
         LIMIT 1
     ");
@@ -33,74 +40,101 @@ if ($action === 'status') {
 
     if ($res->num_rows === 0) {
         echo json_encode([
-            "success" => true,
-            "status"  => "none"
+            "success"  => true,
+            "ui_state" => "blocked",
+            "reason"   => "Shift gate not opened by admin"
         ]);
         exit;
     }
 
     $shift = $res->fetch_assoc();
 
-    echo json_encode([
-        "success" => true,
-        "status"  => $shift['status'],
-        "shift"   => [
-            "id" => $shift['id'],
-            "status" => $shift['status'],
-            "approval_status" => $shift['approval_status'] ?? null,
-            "remarks" => $shift['remarks'] ?? null,
-            "approved_at" => $shift['approved_at'] ?? null
-        ]
-    ]);
-
-    exit;
-}
-
-/* ==========================
-   OPEN SHIFT
-========================== */
-if ($action === 'open') {
-
-    $opening_cash = floatval($_POST['opening_cash'] ?? 0);
-
-    // Prevent open OR pending shift for THIS user
-    $check = $conn->prepare("
-        SELECT id 
-        FROM cashier_shifts 
-        WHERE user_id = ?
-          AND status IN ('open','pending_close')
-        LIMIT 1
-    ");
-    $check->bind_param("i", $user_id);
-    $check->execute();
-    $res = $check->get_result();
-
-    if ($res->num_rows > 0) {
+    /* 🔐 HARD LOCK — another terminal */
+    if (
+        $shift['active_user_id'] !== null &&
+        (int)$shift['active_user_id'] !== (int)$user_id
+    ) {
         echo json_encode([
-            "success" => false,
-            "error"   => "You already have an active or pending shift."
+            "success"  => true,
+            "ui_state" => "blocked",
+            "reason"   => "Shift already active on another terminal"
         ]);
         exit;
     }
 
-    $stmt = $conn->prepare("
-        INSERT INTO cashier_shifts
-        (user_id, opened_at, opening_cash, status)
-        VALUES (?, NOW(), ?, 'open')
-    ");
-    $stmt->bind_param("id", $user_id, $opening_cash);
+    /* 🟦 ADMIN OPENED → WAIT FOR OPENING CASH */
+    if ($shift['status'] === 'pending_open') {
+        echo json_encode([
+            "success"  => true,
+            "ui_state" => "awaiting_open",
+            "shift"    => [
+                "id" => $shift['id']
+            ]
+        ]);
+        exit;
+    }
 
-    if ($stmt->execute()) {
+    /* 🟩 ACTIVE SHIFT */
+    if ($shift['status'] === 'open') {
+        echo json_encode([
+            "success"  => true,
+            "ui_state" => "open",
+            "shift"    => $shift
+        ]);
+        exit;
+    }
+
+    /* 🟨 PENDING CLOSE */
+    if ($shift['status'] === 'pending_close') {
+        echo json_encode([
+            "success"  => true,
+            "ui_state" => "pending_close",
+            "shift"    => $shift
+        ]);
+        exit;
+    }
+
+    echo json_encode([
+        "success"  => true,
+        "ui_state" => "blocked"
+    ]);
+    exit;
+}
+/* ==========================
+   OPEN SHIFT (CASHIER START)
+========================== */
+
+if ($action === 'open') {
+
+    $opening_cash = floatval($_POST['opening_cash'] ?? 0);
+
+    $stmt = $conn->prepare("
+        UPDATE cashier_shifts
+        SET
+            opening_cash = ?,
+            status = 'open',
+            approval_status = 'approved',
+            is_active = 1,
+            active_user_id = ?
+        WHERE user_id = ?
+          AND status = 'pending_open'
+          AND active_user_id IS NULL
+        LIMIT 1
+    ");
+
+    $stmt->bind_param("dii", $opening_cash, $user_id, $user_id);
+
+    if ($stmt->execute() && $stmt->affected_rows === 1) {
         echo json_encode(["success" => true]);
     } else {
         echo json_encode([
             "success" => false,
-            "error" => "Failed to open shift."
+            "error" => "Shift already claimed or not available"
         ]);
     }
-
     exit;
 }
+
 
 /* ==========================
    SHIFT SUMMARY (CASHIER)
@@ -143,6 +177,40 @@ if ($action === 'summary') {
     $stmt->bind_param("i", $shift_id);
     $stmt->execute();
     $totals = $stmt->get_result()->fetch_assoc();
+
+    /* --- Accounts Receivable --- */
+    $stmt = $conn->prepare("
+        SELECT
+            SUM(ar.balance) AS total_receivable
+        FROM accounts_receivable ar
+        JOIN spa_transactions t ON t.id = ar.transaction_id
+        WHERE t.shift_id = ?
+        AND ar.status = 'open'
+        AND ar.ar_type = 'pay_later'
+    ");
+    $stmt->bind_param("i", $shift_id);
+    $stmt->execute();
+    $receivable = $stmt->get_result()->fetch_assoc();
+
+    /* --- Staff Commissions --- */
+    $stmt = $conn->prepare("
+    SELECT
+        e.full_name,
+        SUM(sts.commission_amount) AS total_commission
+    FROM spa_transaction_services sts
+    JOIN employees e ON e.id = sts.employee_id
+    JOIN spa_transactions t ON t.id = sts.transaction_id
+    WHERE t.shift_id = ?
+    GROUP BY e.id
+");
+    $stmt->bind_param("i", $shift_id);
+    $stmt->execute();
+
+    $commissions = [];
+    $res = $stmt->get_result();
+    while ($row = $res->fetch_assoc()) {
+        $commissions[] = $row;
+    }
 
     /* --- Payment breakdown --- */
     $stmt = $conn->prepare("
@@ -187,8 +255,11 @@ if ($action === 'summary') {
         "shift" => $shift,
         "totals" => $totals,
         "payments" => $payments,
-        "transactions" => $transactions
+        "transactions" => $transactions,
+        "receivable" => (float)($receivable['total_receivable'] ?? 0),
+        "commissions" => $commissions
     ]);
+
     exit;
 }
 /* ==========================
@@ -223,12 +294,9 @@ if ($action === 'can_close') {
         SELECT COUNT(*) AS unsettled
         FROM spa_transactions
         WHERE shift_id = ?
-          AND status NOT IN ('cancelled', 'locked')
-          AND (
-                payment_status = 'unpaid'
-             OR (payment_status = 'partial' AND is_receivable = 0)
-          )
+        AND status != 'finalized'
     ");
+
     $stmt->bind_param("i", $shift_id);
     $stmt->execute();
     $row = $stmt->get_result()->fetch_assoc();

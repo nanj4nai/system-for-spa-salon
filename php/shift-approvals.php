@@ -12,6 +12,86 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'admin') {
 $action = $_POST['action'] ?? '';
 
 /* ==========================
+   LIST CASHIERS (NO OPEN GATE)
+========================== */
+if ($action === 'list_cashiers') {
+
+    $res = $conn->query("
+        SELECT u.id, u.username
+        FROM users u
+        WHERE u.role = 'cashier'
+          AND NOT EXISTS (
+              SELECT 1
+              FROM cashier_shifts cs
+              WHERE cs.user_id = u.id
+                AND cs.status IN ('open', 'pending_open')
+          )
+        ORDER BY u.username
+    ");
+
+    echo json_encode([
+        "success" => true,
+        "cashiers" => $res->fetch_all(MYSQLI_ASSOC)
+    ]);
+    exit;
+}
+
+
+
+/* ==========================
+   ADMIN OPEN SHIFT
+========================== */
+
+if ($action === 'open_shift') {
+
+    $cashier_id = intval($_POST['cashier_id'] ?? 0);
+    $admin_id   = $_SESSION['user_id'];
+
+    if ($cashier_id <= 0) {
+        echo json_encode(["success" => false, "error" => "Invalid cashier"]);
+        exit;
+    }
+
+    // 🔒 Ensure cashier has NO active/open shift
+    $stmt = $conn->prepare("
+        SELECT id
+        FROM cashier_shifts
+        WHERE user_id = ?
+          AND status = 'open'
+        LIMIT 1
+    ");
+    $stmt->bind_param("i", $cashier_id);
+    $stmt->execute();
+
+    if ($stmt->get_result()->num_rows > 0) {
+        echo json_encode([
+            "success" => false,
+            "error" => "Cashier already has an open shift"
+        ]);
+        exit;
+    }
+
+    // ✅ Open gate (NO CASH YET)
+    $stmt = $conn->prepare("
+        INSERT INTO cashier_shifts (
+            user_id,
+            opened_at,
+            status,
+            approval_status,
+            approved_by,
+            approved_at
+        ) VALUES (
+            ?, NOW(), 'pending_open', 'approved', ?, NOW()
+        )
+    ");
+    $stmt->bind_param("ii", $cashier_id, $admin_id);
+    $stmt->execute();
+
+    echo json_encode(["success" => true]);
+    exit;
+}
+
+/* ==========================
    FETCH PENDING SHIFTS
 ========================== */
 if ($action === 'list') {
@@ -37,6 +117,31 @@ if ($action === 'list') {
     ]);
     exit;
 }
+
+/* ==========================
+   FETCH PENDING OPEN SHIFTS
+========================== */
+if ($action === 'list_pending_open') {
+
+    $res = $conn->query("
+        SELECT 
+            cs.id,
+            cs.opened_at,
+            cs.status,
+            u.username
+        FROM cashier_shifts cs
+        JOIN users u ON cs.user_id = u.id
+        WHERE cs.status = 'pending_open'
+        ORDER BY cs.opened_at ASC
+    ");
+
+    echo json_encode([
+        "success" => true,
+        "shifts" => $res->fetch_all(MYSQLI_ASSOC)
+    ]);
+    exit;
+}
+
 /* ==========================
    FETCH close SHIFTS
 ========================== */
@@ -63,7 +168,8 @@ if ($action === 'list_closed') {
 
         LEFT JOIN accounts_receivable ar
             ON ar.transaction_id = t.id
-           AND ar.status = 'open'
+        AND ar.status = 'open'
+        AND ar.ar_type = 'pay_later'
 
         WHERE cs.status = 'closed'
 
@@ -102,7 +208,8 @@ if ($action === 'list_active') {
 
         LEFT JOIN accounts_receivable ar
             ON ar.transaction_id = t.id
-           AND ar.status = 'open'
+        AND ar.status = 'open'
+        AND ar.ar_type = 'pay_later'
 
         WHERE cs.status = 'open'
           AND cs.is_active = 1
@@ -144,6 +251,7 @@ if ($action === 'list_pending') {
         LEFT JOIN accounts_receivable ar
             ON ar.transaction_id = t.id
            AND ar.status = 'open'
+           AND ar.ar_type = 'pay_later'   -- ✅ THIS IS THE FIX
 
         WHERE cs.status = 'pending_close'
         GROUP BY cs.id
@@ -154,6 +262,22 @@ if ($action === 'list_pending') {
         "success" => true,
         "shifts" => $res->fetch_all(MYSQLI_ASSOC)
     ]);
+    exit;
+}
+
+if ($action === 'cancel_gate') {
+
+    $shift_id = intval($_POST['shift_id']);
+
+    $stmt = $conn->prepare("
+        DELETE FROM cashier_shifts
+        WHERE id = ?
+          AND status = 'pending_open'
+    ");
+    $stmt->bind_param("i", $shift_id);
+    $stmt->execute();
+
+    echo json_encode(["success" => true]);
     exit;
 }
 
@@ -224,37 +348,67 @@ if ($action === 'summary') {
         SELECT
             cs.opening_cash,
             cs.closing_cash,
-            COALESCE(SUM(
-                CASE
-                    WHEN p.payment_method = 'cash'
-                     AND t.transaction_type = 'walkin'
-                    THEN p.amount
-                    ELSE 0
-                END
-            ), 0) AS cash_sales
+
+            /* SALES */
+            (
+                SELECT COALESCE(SUM(t.total_amount), 0)
+                FROM spa_transactions t
+                WHERE t.shift_id = cs.id
+            ) AS gross_sales,
+
+            /* TOTAL COLLECTED */
+            (
+                SELECT COALESCE(SUM(p.amount), 0)
+                FROM payments p
+                JOIN spa_transactions t ON t.id = p.transaction_id
+                WHERE t.shift_id = cs.id
+            ) AS total_collected,
+
+            /* CASH ONLY */
+            (
+                SELECT COALESCE(SUM(p.amount), 0)
+                FROM payments p
+                JOIN spa_transactions t ON t.id = p.transaction_id
+                WHERE t.shift_id = cs.id
+                AND p.payment_method = 'cash'
+            ) AS cash_collected,
+
+            /* PAY-LATER ONLY (EXCLUDES online_tracking) */
+            (
+                SELECT COALESCE(SUM(ar.balance), 0)
+                FROM accounts_receivable ar
+                JOIN spa_transactions t ON t.id = ar.transaction_id
+                WHERE t.shift_id = cs.id
+                AND ar.ar_type = 'pay_later'
+                AND ar.status = 'open'
+            ) AS pay_later_balance
+
         FROM cashier_shifts cs
-        LEFT JOIN spa_transactions t ON t.shift_id = cs.id
-        LEFT JOIN payments p ON p.transaction_id = t.id
         WHERE cs.id = ?
-        GROUP BY cs.id
+        LIMIT 1
     ");
+
     $stmt->bind_param("i", $shift_id);
     $stmt->execute();
     $summary = $stmt->get_result()->fetch_assoc();
 
-    $expected = $summary['opening_cash'] + $summary['cash_sales'];
-    $variance = $summary['closing_cash'] - $expected;
+    $expectedCash = (float)$summary['opening_cash'] + (float)$summary['cash_collected'];
+    $variance     = (float)$summary['closing_cash'] - $expectedCash;
 
     echo json_encode([
         "success" => true,
         "summary" => [
-            "opening_cash" => $summary['opening_cash'],
-            "cash_sales" => $summary['cash_sales'],
-            "expected_cash" => $expected,
-            "closing_cash" => $summary['closing_cash'],
-            "variance" => $variance
+            "opening_cash"      => (float)$summary['opening_cash'],
+            "closing_cash"      => (float)$summary['closing_cash'],
+            "gross_sales"       => (float)$summary['gross_sales'],
+            "total_collected"   => (float)$summary['total_collected'],
+            "cash_collected"    => (float)$summary['cash_collected'],
+            "pay_later_balance" => (float)$summary['pay_later_balance'],
+            "expected_cash"     => $expectedCash,
+            "variance"          => $variance
         ]
     ]);
+
     exit;
 }
 
@@ -299,7 +453,7 @@ if ($action === 'transactions') {
 }
 
 /* ==========================
-   REJECT SHIFT
+   REJECT SHIFT (ADMIN)
 ========================== */
 if ($action === 'reject') {
 
@@ -311,7 +465,7 @@ if ($action === 'reject') {
             status = 'open',
             is_active = 1,
             closing_cash = NULL,
-            approval_status = NULL,
+            approval_status = 'approved',
             approved_by = NULL,
             approved_at = NULL
         WHERE id = ?
@@ -322,10 +476,11 @@ if ($action === 'reject') {
     $stmt->execute();
 
     echo json_encode([
-        "success" => $stmt->affected_rows === 1
+        'success' => $stmt->affected_rows === 1
     ]);
     exit;
 }
+
 
 if ($action === 'transaction_details') {
 

@@ -122,7 +122,18 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
 
-    const statusClass = (status) => {
+    const statusClass = (status, row) => {
+        if (status === "confirmed" && row?.source === "online") {
+            return "bg-indigo-100 text-indigo-700";
+        }
+        if (
+            status === "pending" &&
+            row?.source === "online" &&
+            row?.transaction_status === "pending_verification"
+        ) {
+            return "bg-blue-100 text-blue-700";
+        }
+
         switch (status) {
             case "completed":
                 return "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300";
@@ -137,17 +148,23 @@ document.addEventListener("DOMContentLoaded", () => {
                 return "bg-rose-100 text-rose-700";
         }
     };
-    const totalClass = (row) => {
-        if (row.transaction_id && row.payment_status === "paid") {
-            return "text-green-600 dark:text-green-400";
-        }
 
+    const totalClass = (row) => {
         if (row.transaction_id && row.has_receivable) {
             return "text-orange-600 dark:text-orange-400";
         }
 
+        if (row.transaction_id && row.payment_status === "paid") {
+            return "text-green-600 dark:text-green-400";
+        }
+
+        if (row.transaction_id && row.payment_status === "partial" && row.source === "online") {
+            return "text-yellow-600 dark:text-yellow-400";
+        }
+
         return "text-gray-800 dark:text-gray-200";
     };
+
 
     const computeAppointmentTotal = (row) => {
         // 🔥 SOURCE OF TRUTH
@@ -168,15 +185,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const paymentBadge = (row) => {
         if (!row.transaction_id) return "";
 
-        if (row.payment_status === "paid") {
+        if (row.source === "online" &&
+            row.transaction_status === "pending_verification") {
             return `
-            <div class="text-xs font-semibold text-green-700 bg-green-100
-                        dark:bg-green-900 dark:text-green-300
+            <div class="text-xs font-semibold text-blue-700 bg-blue-100
+                        dark:bg-blue-900 dark:text-blue-300
                         px-2 py-0.5 rounded inline-block mt-1">
-                PAID
+                PENDING VERIFICATION
             </div>
         `;
         }
+
 
         if (row.has_receivable) {
             return `
@@ -188,12 +207,22 @@ document.addEventListener("DOMContentLoaded", () => {
         `;
         }
 
-        if (row.payment_status === "partial") {
+        if (row.payment_status === "paid") {
+            return `
+            <div class="text-xs font-semibold text-green-700 bg-green-100
+                        dark:bg-green-900 dark:text-green-300
+                        px-2 py-0.5 rounded inline-block mt-1">
+                PAID
+            </div>
+        `;
+        }
+
+        if (row.payment_status === "partial" && row.source === "online") {
             return `
             <div class="text-xs font-semibold text-yellow-700 bg-yellow-100
                         dark:bg-yellow-900 dark:text-yellow-300
                         px-2 py-0.5 rounded inline-block mt-1">
-                PARTIAL ₱${parseFloat(row.balance_due || 0).toFixed(2)}
+                DEPOSIT ₱${parseFloat(row.balance_due || 0).toFixed(2)}
             </div>
         `;
         }
@@ -621,7 +650,10 @@ document.addEventListener("DOMContentLoaded", () => {
                 </button>
             </td>
 
-            <td class="p-4 font-medium">#${row.id}</td>
+            <td class="p-4 font-medium">
+                #${row.id}
+                ${sourceBadge(row)}
+            </td>
 
             <td class="p-4">
                 <div class="font-medium">${formatDateLong(row.appointment_date)}</div>
@@ -644,12 +676,13 @@ document.addEventListener("DOMContentLoaded", () => {
                             ${statusClass(row.status)} ${statusDisabled}"
                         data-id="${row.id}"
                         ${row.transaction_id ? "disabled" : ""}>
-                    ${["pending", "confirmed", "completed", "cancelled", "no_show"]
+                        ${["pending", "confirmed", "cancelled", "no_show"]
                     .map(s => `
                             <option value="${s}" ${s === row.status ? "selected" : ""}>
                                 ${s.replace("_", " ")}
                             </option>
                         `).join("")}
+
                 </select>
             </td>
             <td class="p-4 text-xs opacity-70">
@@ -674,9 +707,13 @@ document.addEventListener("DOMContentLoaded", () => {
                     <p class="text-xs opacity-70">Client</p>
                     <p class="font-semibold">${row.client_name}</p>
                 </div>
-                <span class="px-3 py-1 rounded-full text-xs font-medium ${statusClass(row.status)}">
-                    ${row.status.replace("_", " ")}
-                </span>
+                <div class="flex items-center gap-2">
+                    <span class="px-3 py-1 rounded-full text-xs font-medium ${statusClass(row.status)}">
+                        ${row.status.replace("_", " ")}
+                    </span>
+                    ${sourceBadge(row)}
+                </div>
+
                 ${paymentBadge(row)}
             </div>
 
@@ -844,7 +881,10 @@ document.addEventListener("DOMContentLoaded", () => {
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                 <div>
                     <p class="text-sm opacity-70">Client</p>
-                    <h3 class="text-2xl font-bold">${appointment.client_name}</h3>
+                    <div class="flex items-center gap-2">
+                        <h3 class="text-2xl font-bold">${appointment.client_name}</h3>
+                        ${sourceBadge(appointment)}
+                    </div>
                 </div>
 
                 <span class="
@@ -1102,6 +1142,19 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
 });
+
+const sourceBadge = (row) => {
+    if (row.source !== "online") return "";
+
+    return `
+        <span class="ml-2 px-2 py-0.5 rounded-full
+                     text-xs font-semibold
+                     bg-indigo-100 text-indigo-700
+                     dark:bg-indigo-900 dark:text-indigo-300">
+            ONLINE
+        </span>
+    `;
+};
 
 const loadFilterDropdowns = async () => {
     // Staff

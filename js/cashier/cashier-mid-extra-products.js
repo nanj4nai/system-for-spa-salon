@@ -228,7 +228,7 @@ function loadExtraProducts() {
                         </div>
                     </div>
                     <div class="flex gap-2">
-                        <button
+                        <button data-mutation
                             class="text-red-500 text-xs"
                             onclick="removeExtraProduct(${p.id})">
                             Remove

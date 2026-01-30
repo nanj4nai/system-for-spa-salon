@@ -67,7 +67,11 @@ addServiceBtn.addEventListener('click', () => {
         showToast("Transaction is locked — services cannot be modified", "error");
         return;
     }
+    serviceSelect.disabled = false;
+    variantSelect.disabled = false;
 
+    serviceSelect.classList.remove("opacity-50", "cursor-not-allowed");
+    variantSelect.classList.remove("opacity-50", "cursor-not-allowed");
     // 🛑 GUARD: do not reset while editing
     if (editingAppointmentServiceId) {
         showToast(
@@ -116,10 +120,13 @@ function loadServices() {
 
 
 function loadAppointmentServices() {
+    if (CashierState.activeTransactionId) return;
+
     if (!CashierState.activeAppointmentId) {
         console.warn("No active appointment — skipping loadAppointmentServices");
         return;
     }
+
     const container = document.getElementById("serviceList");
     container.innerHTML = `<div class="text-xs text-gray-400">Loading services…</div>`;
 
@@ -150,14 +157,14 @@ function loadAppointmentServices() {
                         </div>
 
                         <div class="flex gap-2">
-                            <button
+                            <button data-mutation
                                 class="text-xs px-2 py-1 rounded bg-gray-200 dark:bg-gray-600"
                                 data-action="edit-service"
                                 data-id="${s.id}">
                                 Edit
                             </button>
 
-                            <button
+                            <button data-mutation
                                 class="text-xs px-2 py-1 rounded bg-red-500 text-white"
                                 data-action="remove-service"
                                 data-id="${s.id}">
@@ -230,6 +237,7 @@ function loadStaff() {
 }
 
 serviceSelect.addEventListener("change", () => {
+    if (serviceSelect.disabled) return;
     const serviceId = serviceSelect.value;
 
     document.getElementById("variantWrapper").classList.add("hidden");
@@ -258,6 +266,8 @@ serviceSelect.addEventListener("change", () => {
 
 
 cancelServiceBtn.addEventListener("click", () => {
+    serviceSelect.disabled = false;
+    variantSelect.disabled = false;
     serviceModal.classList.add("hidden");
     editingAppointmentServiceId = null;
     unlockAddService();
@@ -503,20 +513,22 @@ async function openEditService(appointmentServiceId) {
     if (!d.success) return;
 
     const s = d.service;
+    const isBookingService = s.is_booking_service === true;
 
-    // ✅ THIS is the editor
+    // 🔥 RENDER PRODUCT USAGE EDITOR (THIS WAS MISSING)
     renderServiceProductUsageEditor(
         s.id,
         s.products || [],
         d.transaction_status
     );
 
-    // load dropdowns
+    // 🔥 LOAD DROPDOWNS FIRST
     await Promise.all([
         loadServices(),
         loadStaff()
     ]);
 
+    // 🔥 SET VALUES
     serviceSelect.value = String(s.service_id);
     staffSelect.value = String(s.employee_id);
 
@@ -537,6 +549,33 @@ async function openEditService(appointmentServiceId) {
         document.getElementById("variantWrapper").classList.remove("hidden");
     }
 
+    // 🔒 NOW LOCK IF ONLINE
+    if (isBookingService) {
+        serviceSelect.disabled = true;
+        variantSelect.disabled = true;
+
+        serviceSelect.classList.add("opacity-50", "cursor-not-allowed");
+        variantSelect.classList.add("opacity-50", "cursor-not-allowed");
+
+        showToast(
+            "Online booking service — service and variant cannot be changed",
+            "info"
+        );
+    } else {
+        serviceSelect.disabled = false;
+        variantSelect.disabled = false;
+
+        serviceSelect.classList.remove("opacity-50", "cursor-not-allowed");
+        variantSelect.classList.remove("opacity-50", "cursor-not-allowed");
+    }
+
+
+    if (d.service.is_booking_service) {
+        showToast(
+            "This service came from an online booking. Only staff and product usage can be edited.",
+            "info"
+        );
+    }
 
     serviceModal.classList.remove("hidden");
     serviceModal.classList.add("flex");

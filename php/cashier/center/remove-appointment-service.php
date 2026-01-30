@@ -11,7 +11,6 @@ if (!isset($_SESSION['user_id']) || $_SESSION['role'] !== 'cashier') {
 }
 
 $data = json_decode(file_get_contents("php://input"), true);
-
 $id = intval($data['appointment_service_id'] ?? 0);
 
 if (!$id) {
@@ -19,17 +18,19 @@ if (!$id) {
     exit;
 }
 
-
 $conn->begin_transaction();
 
 try {
     /* =====================
-       GET APPOINTMENT ID
+       FETCH SERVICE + SOURCE
     ===================== */
     $stmt = $conn->prepare("
-        SELECT appointment_id
-        FROM appointment_services
-        WHERE id = ?
+        SELECT 
+            aps.appointment_id,
+            a.source
+        FROM appointment_services aps
+        JOIN appointments a ON a.id = aps.appointment_id
+        WHERE aps.id = ?
     ");
     $stmt->bind_param("i", $id);
     $stmt->execute();
@@ -39,7 +40,29 @@ try {
         throw new Exception("Service not found");
     }
 
+    // 🔒 HARD RULE: block online services
+    if ($row['source'] === 'online') {
+        throw new Exception("Online booking services cannot be removed");
+    }
+
     $appointment_id = $row['appointment_id'];
+
+    /* =====================
+       CHECK TRANSACTION STATUS
+    ===================== */
+    $stmt = $conn->prepare("
+        SELECT payment_status
+        FROM spa_transactions
+        WHERE appointment_id = ?
+        LIMIT 1
+    ");
+    $stmt->bind_param("i", $appointment_id);
+    $stmt->execute();
+    $tx = $stmt->get_result()->fetch_assoc();
+
+    if ($tx && $tx['payment_status'] === 'paid') {
+        throw new Exception("Cannot remove services from a paid transaction");
+    }
 
     /* =====================
        RESTORE PRODUCT STOCK
@@ -53,32 +76,15 @@ try {
     $stmt->execute();
     $res = $stmt->get_result();
 
-    while ($row = $res->fetch_assoc()) {
+    while ($p = $res->fetch_assoc()) {
         $u = $conn->prepare("
             UPDATE products
             SET stock = stock + ?
             WHERE id = ?
         ");
-        $u->bind_param("di", $row['quantity_used'], $row['product_id']);
+        $u->bind_param("di", $p['quantity_used'], $p['product_id']);
         $u->execute();
     }
-    /* =====================
-       CHECK TRANSACTION PAYMENT STATUS
-    ===================== */
-    $stmt = $conn->prepare("
-    SELECT payment_status
-    FROM spa_transactions
-    WHERE appointment_id = ?
-    LIMIT 1
-");
-    $stmt->bind_param("i", $appointment_id);
-    $stmt->execute();
-    $tx = $stmt->get_result()->fetch_assoc();
-
-    if ($tx && $tx['payment_status'] === 'paid') {
-        throw new Exception("Cannot remove services from a paid transaction");
-    }
-
 
     /* =====================
        DELETE PRODUCT USAGE

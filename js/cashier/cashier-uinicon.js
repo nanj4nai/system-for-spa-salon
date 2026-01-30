@@ -4,6 +4,7 @@ const helpToggle = document.getElementById("helpToggle");
 const tips = document.querySelectorAll(".panel-tip");
 const helpIcon = document.getElementById("helpIcon");
 const dateTimeText = document.getElementById("dateTimeText");
+const refreshBtn = document.getElementById("refreshBtn");
 
 lucide.createIcons();
 
@@ -106,3 +107,16 @@ helpToggle?.addEventListener("click", () => {
         showToast(!enabled ? "Tips enabled" : "Tips hidden");
     }
 });
+
+refreshBtn?.addEventListener("click", () => {
+    const shiftOpen = !document
+        .getElementById("shiftBadge")
+        ?.classList.contains("bg-red-100");
+
+    if (shiftOpen && !confirm("You have an active shift. Refresh anyway?")) {
+        return;
+    }
+
+    window.location.reload();
+});
+

@@ -13,78 +13,95 @@ $total_services = $conn->query("SELECT COUNT(*) AS cnt FROM services")
 // --------------------- ACTIVE BOOKINGS (Today) ---------------------
 $active_bookings = $conn->query("
     SELECT COUNT(*) AS cnt
-    FROM spa_transactions
-    WHERE DATE(created_at) = CURDATE()
+    FROM appointments
+    WHERE appointment_date = CURDATE()
+    AND status IN ('confirmed', 'checked_in', 'completed')
 ")->fetch_assoc()['cnt'] ?? 0;
-
 
 // --------------------- UPCOMING BOOKINGS ---------------------
 $upcoming_bookings = $conn->query("
     SELECT COUNT(*) AS cnt
-    FROM spa_transactions
-    WHERE DATE(created_at) > CURDATE()
-    AND DATE(created_at) <= DATE_ADD(CURDATE(), INTERVAL $due_in DAY)
+    FROM appointments
+    WHERE appointment_date > CURDATE()
+    AND appointment_date <= DATE_ADD(CURDATE(), INTERVAL $due_in DAY)
+    AND status IN ('confirmed', 'pending')
 ")->fetch_assoc()['cnt'] ?? 0;
-
 
 // --------------------- UPCOMING APPOINTMENTS LIST ---------------------
 $due_soon = [];
+
 $result = $conn->query("
-    SELECT 
-        spa_transactions.id,
-        clients.full_name AS client_name,
-        spa_transactions.created_at AS appointment_time,
+    SELECT
+        a.id,
+        a.appointment_date,
+        a.start_time,
+        c.full_name AS client_name,
         (
-            SELECT services.name 
-            FROM spa_transaction_services 
-            JOIN services ON services.id = spa_transaction_services.service_id
-            WHERE spa_transaction_services.transaction_id = spa_transactions.id
+            SELECT s.name
+            FROM appointment_services aps
+            JOIN services s ON s.id = aps.service_id
+            WHERE aps.appointment_id = a.id
             LIMIT 1
         ) AS service_name
-    FROM spa_transactions
-    JOIN clients ON clients.id = spa_transactions.client_id
-    WHERE DATE(spa_transactions.created_at) >= CURDATE()
-    AND DATE(spa_transactions.created_at) <= DATE_ADD(CURDATE(), INTERVAL $due_in DAY)
-    ORDER BY spa_transactions.created_at ASC
+    FROM appointments a
+    JOIN clients c ON c.id = a.client_id
+    WHERE a.appointment_date >= CURDATE()
+    AND a.appointment_date <= DATE_ADD(CURDATE(), INTERVAL $due_in DAY)
+    AND a.status IN ('confirmed', 'pending')
+    ORDER BY a.appointment_date ASC, a.start_time ASC
 ");
 
-if ($result->num_rows > 0) {
-    while ($row = $result->fetch_assoc()) {
-        $due_soon[] = $row;
-    }
+while ($row = $result->fetch_assoc()) {
+    $due_soon[] = [
+        "client_name" => $row["client_name"],
+        "service_name" => $row["service_name"] ?? "—",
+        "appointment_time" =>
+        $row["appointment_date"] . " " . $row["start_time"]
+    ];
 }
 
 
 // --------------------- BOOKING TRENDS (last 7 days) ---------------------
 $booking_trends = [];
+
 $trend_result = $conn->query("
-    SELECT 
-        DATE(created_at) AS day,
+    SELECT
+        appointment_date AS day,
         COUNT(*) AS cnt
-    FROM spa_transactions
-    WHERE created_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
-    GROUP BY DATE(created_at)
-    ORDER BY DATE(created_at)
+    FROM appointments
+    WHERE appointment_date >= DATE_SUB(CURDATE(), INTERVAL 7 DAY)
+    GROUP BY appointment_date
+    ORDER BY appointment_date
 ");
 
 while ($t = $trend_result->fetch_assoc()) {
     $booking_trends[] = [
         "date" => date("M j", strtotime($t['day'])),
-        "count" => intval($t['cnt'])
+        "count" => (int)$t['cnt']
     ];
 }
 
-
 // --------------------- SERVICE CATEGORY DISTRIBUTION ---------------------
 $service_distribution = [];
+
 $dist_result = $conn->query("
-    SELECT 
-        service_categories.name AS category,
-        COUNT(services.id) AS cnt
-    FROM services
-    LEFT JOIN service_categories ON service_categories.id = services.category_id
-    GROUP BY service_categories.name
+    SELECT
+        sc.name AS category,
+        COUNT(aps.id) AS cnt
+    FROM appointment_services aps
+    JOIN services s ON s.id = aps.service_id
+    LEFT JOIN service_categories sc ON sc.id = s.category_id
+    JOIN appointments a ON a.id = aps.appointment_id
+    WHERE a.status IN ('completed', 'confirmed')
+    GROUP BY sc.name
 ");
+
+while ($s = $dist_result->fetch_assoc()) {
+    $service_distribution[] = [
+        "category" => $s['category'] ?? "Uncategorized",
+        "count" => (int)$s['cnt']
+    ];
+}
 
 while ($s = $dist_result->fetch_assoc()) {
     $service_distribution[] = [

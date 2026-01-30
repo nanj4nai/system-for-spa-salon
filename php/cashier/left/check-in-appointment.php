@@ -3,6 +3,7 @@ session_start();
 header("Content-Type: application/json");
 
 require_once "../../db.php";
+require_once "../helpers.php";
 
 /* =====================
    AUTH
@@ -22,11 +23,10 @@ if ($appointment_id <= 0) {
 }
 
 /* =====================
-   FETCH + VALIDATE (DB-SIDE DATE CHECK)
+   FETCH + VALIDATE
 ===================== */
 $stmt = $conn->prepare("
-    SELECT
-        status
+    SELECT status
     FROM appointments
     WHERE id = ?
       AND appointment_date = CURDATE()
@@ -44,11 +44,6 @@ if (!$app) {
     exit;
 }
 
-/* =====================
-   STATUS GUARDS
-===================== */
-
-// already checked in
 if ($app['status'] === 'checked_in') {
     echo json_encode([
         "success" => false,
@@ -57,7 +52,6 @@ if ($app['status'] === 'checked_in') {
     exit;
 }
 
-// must be confirmed
 if ($app['status'] !== 'confirmed') {
     echo json_encode([
         "success" => false,
@@ -66,8 +60,17 @@ if ($app['status'] !== 'confirmed') {
     exit;
 }
 
+$userId = $_SESSION['user_id'];
+$shift_id = getOpenShiftId($conn, $userId);
+
+if (!$shift_id) {
+    echo json_encode(["success" => false, "error" => "No open shift"]);
+    exit;
+}
+
+
 /* =====================
-   CHECK-IN (SAFE UPDATE)
+   CHECK-IN
 ===================== */
 $stmt = $conn->prepare("
     UPDATE appointments
@@ -81,21 +84,88 @@ $stmt = $conn->prepare("
       AND status = 'confirmed'
 ");
 
-$userId = $_SESSION['user_id'];
+
 $stmt->bind_param("iii", $userId, $userId, $appointment_id);
 $stmt->execute();
 
-/* 🔒 CRITICAL: ensure something actually changed */
 if ($stmt->affected_rows !== 1) {
     echo json_encode([
         "success" => false,
-        "error" => "Check-in failed or appointment already processed"
+        "error" => "Check-in failed"
     ]);
     exit;
 }
 
+$transactionId = null;
 /* =====================
-   ACTIVITY LOG (NON-BLOCKING)
+   ENSURE TRANSACTION (MANDATORY)
+===================== */
+$stmt = $conn->prepare("
+    SELECT id
+    FROM spa_transactions
+    WHERE appointment_id = ?
+    LIMIT 1
+");
+$stmt->bind_param("i", $appointment_id);
+$stmt->execute();
+$txn = $stmt->get_result()->fetch_assoc();
+
+if ($txn) {
+    $transactionId = (int)$txn['id'];
+
+    $stmt = $conn->prepare("
+        UPDATE spa_transactions
+        SET shift_id = ?
+        WHERE id = ? AND shift_id IS NULL
+    ");
+    $stmt->bind_param("ii", $shift_id, $transactionId);
+    $stmt->execute();
+} else {
+    // 🆕 CREATE transaction WITH shift ownership
+    $txnNumber = 'TXN-' . date('Ymd-His') . '-' . rand(100, 999);
+
+    $stmt = $conn->prepare("
+    INSERT INTO spa_transactions (
+        transaction_number,
+        client_id,
+        appointment_id,
+        shift_id,
+        transaction_type,
+        status,
+        include_vat,
+        is_receivable,
+        payment_status,
+        amount_paid
+    )
+    SELECT
+        ?,
+        a.client_id,
+        a.id,
+        ?,
+        'walkin',
+        'editing',
+        1,
+        0,
+        'unpaid',
+        0.00
+    FROM appointments a
+    WHERE a.id = ?
+");
+    $stmt->bind_param("sii", $txnNumber, $shift_id, $appointment_id);
+    $stmt->execute();
+
+    $transactionId = $stmt->insert_id;
+}
+
+/* =====================
+   🔥 SEED SERVICES + TOTALS
+===================== */
+if ($transactionId) {
+    recalcTransaction($conn, $transactionId);
+}
+
+/* =====================
+   ACTIVITY LOG
 ===================== */
 $log = $conn->prepare("
     INSERT INTO activity_logs (user_id, action, description)

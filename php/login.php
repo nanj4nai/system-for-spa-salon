@@ -147,6 +147,16 @@ $conn->close();
              min-h-screen flex items-center justify-center px-4 py-8 sm:p-6 transition-colors">
 
     <div class="glass-card w-full max-w-md px-6 py-8 sm:p-10 rounded-3xl">
+        <!-- Back to Booking -->
+        <div class="mb-4 text-center">
+            <a href="../booking/index.php"
+                class="inline-flex items-center gap-1
+              text-sm text-teal-600 hover:text-teal-700
+              font-medium transition">
+                <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                Back to Booking
+            </a>
+        </div>
 
         <!-- Logo -->
         <div class="flex justify-center mb-6">

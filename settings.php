@@ -23,10 +23,15 @@ $settings = $settingsResult->fetch_assoc() ?: [
     'spa_name' => '',
     'address' => '',
     'contact_number' => '',
+    'email' => '',
     'invoice_prefix' => 'SPA',
     'vat_rate' => 12,
-    'logo_path' => ''
+    'logo_path' => '',
+    'gcash_number' => '',
+    'gcash_qr_path' => ''
 ];
+
+
 ?>
 
 <!DOCTYPE html>
@@ -184,6 +189,19 @@ $settings = $settingsResult->fetch_assoc() ?: [
                     <input type="text" name="contact_number" value="<?= htmlspecialchars($settings['contact_number']) ?>" required
                         class="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-500 transition">
                 </div>
+                <div>
+                    <label class="block mb-1 font-medium">Email Address</label>
+                    <input
+                        type="email"
+                        name="email"
+                        value="<?= htmlspecialchars($settings['email']) ?>"
+                        required
+                        placeholder="company@email.com"
+                        class="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700 text-gray-900 dark:text-gray-200 focus:outline-none focus:ring-2 focus:ring-teal-500 transition">
+                    <p class="text-sm text-gray-500 mt-1">
+                        This email can appear on invoices and receipts.
+                    </p>
+                </div>
 
                 <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
@@ -205,6 +223,37 @@ $settings = $settingsResult->fetch_assoc() ?: [
                     <label class="block mb-1 font-medium">Logo</label>
                     <input type="file" name="logo" id="logoInput" class="w-full text-gray-900 dark:text-gray-200">
                     <img id="logoPreview" src="<?= htmlspecialchars($settings['logo_path']) ?>" class="mt-2 h-16 <?= $settings['logo_path'] ? '' : 'hidden' ?>" alt="Logo">
+                </div>
+                <hr class="my-6">
+
+                <h3 class="text-lg font-semibold text-teal-800 dark:text-teal-300">
+                    GCash Payment Settings
+                </h3>
+
+                <div>
+                    <label class="block mb-1 font-medium">GCash Number</label>
+                    <input
+                        type="text"
+                        name="gcash_number"
+                        value="<?= htmlspecialchars($settings['gcash_number'] ?? '') ?>"
+                        placeholder="09XXXXXXXXX"
+                        class="w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700">
+                    <p class="text-sm text-gray-500 mt-1">
+                        This number will be shown to clients during online payment.
+                    </p>
+                </div>
+
+                <div>
+                    <label class="block mb-1 font-medium">GCash QR Code</label>
+                    <input type="file" name="gcash_qr" accept="image/*"
+                        class="w-full text-gray-900 dark:text-gray-200">
+
+                    <?php if (!empty($settings['gcash_qr_path'])): ?>
+                        <img
+                            src="<?= htmlspecialchars($settings['gcash_qr_path']) ?>"
+                            class="mt-3 w-40 border rounded"
+                            alt="GCash QR Code">
+                    <?php endif; ?>
                 </div>
 
                 <button type="submit" class="px-6 py-2 bg-teal-600 text-white rounded-xl shadow hover:bg-teal-700 transition w-full sm:w-auto">
